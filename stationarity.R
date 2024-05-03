@@ -203,9 +203,9 @@ channel1_filtered <- channel1_filtered[, which(p_values < 0.05)]
 
 # Stationarity transformation on the whole LFP ----------------------------
 
-transform_stationary <- function(LFP, 
-                                 # hard_remove_all = c(TRUE, FALSE), 
-                                 time_clipped_ind = time_clipped_ind) {
+transform_stationary <- function(LFP 
+                                 # , hard_remove_all = c(TRUE, FALSE)
+                                 ) {
   
   # prepare matrix for the transformed LFPs
   LFP_stationary <- array(dim = c(length(time_clipped_ind), dim(LFP)[3]))
@@ -274,7 +274,7 @@ transform_stationary <- function(LFP,
   
 }
 
-LFP_stationary <- transform_stationary(LFP = LFP, time_clipped_ind = time_clipped_ind)
+LFP_stationary <- transform_stationary(LFP = LFP)
 dim(LFP_stationary)
 LFP_stationary[1:3, 1:3, 1:3]
 

@@ -5,8 +5,9 @@ library(vars)       # VAR model
 library(tseries)    # ADF test
 library(bruceR)     # Granger causality
 library(multitaper) # Multitaper spectral analysis
+library(igraph)     # graphs for GC
 
-option(scipen = 1000)
+options(scipen = 1000)
 
 
 
@@ -19,7 +20,7 @@ LFP <- np$load("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\C190127-npy\\lf
 probe <- read.csv("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\C190127-npy\\probe.csv", header = FALSE)
 probe_header <- read.csv("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\C190127-npy\\probe_header.csv", header = FALSE)
 colnames(probe) <- probe_header
-rm(list = "probe_header")
+# rm(list = "probe_header")
 
 # time
 time <- np$load("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\C190127-npy\\time_array_ms.npy")
@@ -70,10 +71,10 @@ LFP <- LFP[, , trials_ind]
 task <- task[trials_ind, ] 
 task$trial_number_count <- 1:nrow(task)
 
-# only investigate the ultimate time before the stimulus onset
-time_ind <- which(time > -100)
-time <- time[time_ind]
-LFP <- LFP[, time_ind, ]
+# # only investigate the ultimate time before the stimulus onset
+# time_ind <- which(time > -100)
+# time <- time[time_ind]
+# LFP <- LFP[, time_ind, ]
 
 dim(LFP)
 dim(task)

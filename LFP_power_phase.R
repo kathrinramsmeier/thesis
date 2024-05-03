@@ -127,27 +127,27 @@ bands_power_calc <- function(
   
 }
 
-# testing on channel 1, unprimed trials
-rel_bands_power_unprimed_ch1 <- bands_power_calc(
-  LFP = LFP_stationary,
-  frequency_bands = frequency_bands,
-  un_primed_ind = unprimed_ind,
-  electrode_channel = 1,
-  normalised = TRUE
-)
-head(rel_bands_power_unprimed_ch1)
-
-# heatmap 
-row_order <- rownames(rel_bands_power_unprimed_ch1[1:50, ])
-col_order <- colnames(rel_bands_power_unprimed_ch1)
-pheatmap::pheatmap(
-  rel_bands_power_unprimed_ch1[1:50, ],
-  main = "Relative LFP Power in Unprimed Conditions for the First 50 Trials",
-  cluster_rows = FALSE,  
-  cluster_cols = FALSE,  
-  row_order = row_order,
-  col_order = col_order
-)
+# # testing on channel 1, unprimed trials
+# rel_bands_power_unprimed_ch1 <- bands_power_calc(
+#   LFP = LFP_stationary,
+#   frequency_bands = frequency_bands,
+#   un_primed_ind = unprimed_ind,
+#   electrode_channel = 1,
+#   normalised = TRUE
+# )
+# head(rel_bands_power_unprimed_ch1)
+# 
+# # heatmap 
+# row_order <- rownames(rel_bands_power_unprimed_ch1[1:50, ])
+# col_order <- colnames(rel_bands_power_unprimed_ch1)
+# pheatmap::pheatmap(
+#   rel_bands_power_unprimed_ch1[1:50, ],
+#   main = "Relative LFP Power in Unprimed Conditions for the First 50 Trials",
+#   cluster_rows = FALSE,  
+#   cluster_cols = FALSE,  
+#   row_order = row_order,
+#   col_order = col_order
+# )
 
 # loop over all channels and take the mean over all trials (unprimed trials)
 rel_bands_power_unprimed <- matrix(nrow = dim(LFP_stationary)[1], ncol = length(frequency_bands))
@@ -213,7 +213,7 @@ row_order <- rownames(rel_bands_power_unprimed)
 col_order <- colnames(rel_bands_power_unprimed)
 pheatmap::pheatmap(
   rel_bands_power_unprimed,
-  main = "Relative LFP Power in Unprimed Conditions",
+  main = "Relative LFP Power Heatmap in Unprimed Conditions",
   cluster_rows = FALSE,  
   cluster_cols = FALSE,  
   row_order = row_order,
