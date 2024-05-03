@@ -1,24 +1,17 @@
 
-# sampling rate
-sampling_rate <- recordinginfo$data_sampling_rate_hz
-
 # extract the LFP from the first channel
-channel1 <- t(LFP[1, , ])
-dim(channel1) # trial, time
-
-# clipping the LFP
-time_clipped_ind <- which((time < -10) | (time > 10))
-channel1_clipped <- channel1[time_clipped_ind, ]
+channel1 <- LFP[1, , ]
+dim(channel1) # time, trial
 
 
 
 # Check for stationarity --------------------------------------------------
 
-# Augmented Dickey-Fuller test - H0: non-stationay
+# Augmented Dickey-Fuller test - H0: non-stationary
 adf_stationarity_test <- function(LFP_data) {
   p_values <- rep(NA, nrow(LFP_data))
   for(i in 1:nrow(LFP_data)) {
-    p_values[i] <- adf.test(LFP_data[i, ])$p.value
+    p_values[i] <- adf.test(LFP_data[, i])$p.value
   }
   percentage_p_values <- sum(p_values < 0.05) / nrow(LFP_data)
   return(percentage_p_values)
@@ -36,7 +29,7 @@ examine_autocorr <- function(LFP_data) {
   sample_trials <- sample(1:dim(LFP_data)[1], size = 6)
   par(mfrow = c(3, 2))
   for(i in 1:6){
-    acf(LFP_data[i, ])
+    acf(LFP_data[, i])
   }
   par(mfrow = c(1, 1))
 }
@@ -49,8 +42,8 @@ channel1_detrended <- pracma::detrend(t(channel1_clipped), tt = "linear")
 channel1_detrended <- t(channel1_detrended)
 
 par(mfrow = c(2, 1))
-plot(time, channel1_clipped[1, ], type = "l", xlab = "Time", ylab = "Amplitude", main = "Clipped LFP of one Trial")
-plot(time, channel1_detrended[1, ], type = "l", xlab = "Time", ylab = "Amplitude", main = "Detrended and Clipped LFP of one Trial")
+plot(time, channel1_clipped[, 1], type = "l", xlab = "Time", ylab = "Amplitude", main = "Clipped LFP of one Trial")
+plot(time, channel1_detrended[, 1], type = "l", xlab = "Time", ylab = "Amplitude", main = "Detrended and Clipped LFP of one Trial")
 par(mfrow = c(1, 1))
 
 # ADF test for stationarity
@@ -72,8 +65,8 @@ channel1_demeaned <- channel1_detrended - rowMeans(channel1_detrended)
 channel1_normalised <- channel1_demeaned / sd(channel1_demeaned)
 
 par(mfrow = c(2, 1))
-plot(time, channel1_clipped[1, ], type = "l", xlab = "Time", ylab = "Amplitude", main = "Clipped LFP of one Trial")
-plot(time, channel1_normalised[1, ], type = "l", xlab = "Time", ylab = "Amplitude", main = "Normalised, Detrended and Clipped LFP of one Trial")
+plot(time, channel1_clipped[, 1], type = "l", xlab = "Time", ylab = "Amplitude", main = "Clipped LFP of one Trial")
+plot(time, channel1_normalised[, 1], type = "l", xlab = "Time", ylab = "Amplitude", main = "Normalised, Detrended and Clipped LFP of one Trial")
 par(mfrow = c(1, 1))
 
 # ADF test for stationarity
@@ -95,8 +88,8 @@ channel1_ensemble_mean_removed <- t(t(channel1_normalised) - colMeans(channel1_n
 channel1_ensemble_adjusted <- t(t(channel1_ensemble_mean_removed) / sd(t(channel1_ensemble_mean_removed)))
 
 par(mfrow = c(2, 1))
-plot(time, channel1_clipped[1, ], type = "l", xlab = "Time", ylab = "Amplitude", main = "Clipped LFP of one Trial")
-plot(time, channel1_ensemble_adjusted[1, ], type = "l", xlab = "Time", ylab = "Amplitude", main = "Normalised, Detrended and Clipped LFP of one Trial, Ensemble Mean Removed, Divided by the Ensemble SD")
+plot(time, channel1_clipped[, 1], type = "l", xlab = "Time", ylab = "Amplitude", main = "Clipped LFP of one Trial")
+plot(time, channel1_ensemble_adjusted[, 1], type = "l", xlab = "Time", ylab = "Amplitude", main = "Normalised, Detrended and Clipped LFP of one Trial, Ensemble Mean Removed, Divided by the Ensemble SD")
 par(mfrow = c(1, 1))
 
 # ADF test for stationarity
@@ -112,17 +105,15 @@ examine_autocorr(channel1_ensemble_adjusted) # almost no difference to baseline
 
 # differencing one time
 channel1_differenced <- diff(
-  x = t(channel1_ensemble_adjusted),
+  x = channel1_ensemble_adjusted,
   lag = 1,
   # order of differencing - remove linear trends
   differences = 1
 )
 
-channel1_differenced <- t(channel1_differenced)
-
 par(mfrow = c(2, 1))
-plot(time, channel1_clipped_demeaned[1, ], type = "l", xlab = "Time", ylab = "Amplitude", main = "Demeaned and Clipped LFP of one Trial")
-plot(time[1 : (length(time) - 1)], channel1_differenced[1, ], type = "l", xlab = "Time", ylab = "Amplitude", main = "Differenced Demeaned and Clipped LFP of one Trial")
+plot(time, channel1_clipped[, 1], type = "l", xlab = "Time", ylab = "Amplitude", main = "Demeaned and Clipped LFP of one Trial")
+plot(time[1 : (length(time) - 1)], channel1_differenced[, 1], type = "l", xlab = "Time", ylab = "Amplitude", main = "Differenced Demeaned and Clipped LFP of one Trial")
 par(mfrow = c(1, 1))
 
 # ADF test for stationarity
@@ -158,13 +149,13 @@ notch_filter <- signal::fir1(
 
 # notch filtering each LFP trial
 channel1_filtered <- array(dim = dim(channel1_ensemble_adjusted))
-for(i in 1:nrow(channel1_filtered)) {
-  channel1_filtered[i, ] <- signal::filter(filt = notch_filter, x = channel1_clipped_demeaned[i, ])
+for(i in 1:ncol(channel1_filtered)) {
+  channel1_filtered[, i] <- signal::filter(filt = notch_filter, x = channel1_ensemble_adjusted[, i])
 }
 
 par(mfrow = c(2, 1))
-plot(time, channel1_clipped_demeaned[1, ], type = "l", xlab = "Time", ylab = "Amplitude", main = "Demeaned and Clipped LFP of one Trial")
-plot(time, channel1_filtered[1, ], type = "l", xlab = "Time", ylab = "Amplitude", main = "Notch-Filtered, Demeaned and Clipped LFP of one Trial")
+plot(time, channel1_clipped[, 1], type = "l", xlab = "Time", ylab = "Amplitude", main = "Demeaned and Clipped LFP of one Trial")
+plot(time, channel1_filtered[, 1], type = "l", xlab = "Time", ylab = "Amplitude", main = "Notch-Filtered, Demeaned and Clipped LFP of one Trial")
 par(mfrow = c(1, 1))
 
 # ADF test for stationarity
@@ -173,6 +164,15 @@ adf_result_notch # almost all LFPs are now stationary
 
 # examining the autocorrelation function of some sample trials
 examine_autocorr(channel1_filtered) # not much difference compared to baseline
+
+# exclude the remaining few non-stationary trials
+p_values <- rep(NA, nrow(channel1_filtered))
+for(i in 1:nrow(channel1_filtered)) {
+  p_values[i] <- adf.test(channel1_filtered[, i])$p.value
+}
+channel1_filtered <- channel1_filtered[, which(p_values < 0.05)]
+
+
 
 # # find the best filter order
 # adf_result_notch <- rep(NA, 500)
@@ -198,3 +198,95 @@ examine_autocorr(channel1_filtered) # not much difference compared to baseline
 
 
 ### other ideas: windowing, spectral factorisation, wavelet transformations, adaptive recursive least-squares modelling
+
+
+
+# Stationarity transformation on the whole LFP ----------------------------
+
+transform_stationary <- function(LFP, 
+                                 # hard_remove_all = c(TRUE, FALSE), 
+                                 time_clipped_ind = time_clipped_ind) {
+  
+  # prepare matrix for the transformed LFPs
+  LFP_stationary <- array(dim = c(length(time_clipped_ind), dim(LFP)[3]))
+  
+  # prepare list for the remaining non-stationary LFPs before removing them
+  stationary_trials_ind <- list()
+  
+  # loop over all channels
+  for(i in 1:dim(LFP)[1]) {
+    
+    # extract the LFP from the channel i
+    channel <- LFP[i, , ]
+    
+    # removing linear trends
+    channel_detrended <- pracma::detrend(t(channel), tt = "linear")
+    channel_detrended <- t(channel_detrended)
+    
+    # removal of temporal mean and division of temporal sd
+    channel_demeaned <- channel_detrended - rowMeans(channel_detrended)
+    channel_normalised <- channel_demeaned / sd(channel_demeaned)
+    
+    # ensemble mean removal and division of ensemble sd 
+    channel_ensemble_mean_removed <- t(t(channel_normalised) - colMeans(channel_normalised))
+    channel_ensemble_adjusted <- t(t(channel_ensemble_mean_removed) / sd(t(channel_ensemble_mean_removed)))
+    
+    # notch filtering each LFP trial
+    fc <- 60 # remove frequencies around 60 Hz (= electrical line noise)
+    nyquist_freq <- sampling_rate / 2 # Nyquist frequency: maximum frequency that can be represented in the digital signal
+    fc_norm <- fc / nyquist_freq
+    notch_filter <- signal::fir1(
+      # filter order - higher -> filters with sharper frequency responses, better attenuation, more computation; lower -> smoother frequency responses, may not achieve as much attenuation
+      n = 10, 
+      # band edges
+      w = fc_norm,
+      # notch filter
+      type = "stop"
+    )
+    channel_filtered <- array(dim = dim(channel_ensemble_adjusted))
+    for(j in 1:ncol(channel_filtered)) {
+      channel_filtered[, j] <- signal::filter(filt = notch_filter, x = channel_ensemble_adjusted[, j])
+    }
+    
+    # display the remaining non-stationary LFPs
+    p_values <- rep(NA, nrow(channel_filtered))
+    for (j in 1:nrow(channel_filtered)) {
+      p_values[j] <- adf.test(channel_filtered[, j])$p.value
+    }
+    # channel_name <- paste0("channel", i)
+    # stationary_trials_ind[[channel_name]] <- channel_filtered[, which(p_values > 0.05)]
+    
+    print(paste0("Channel ", i, ": Number of LFP trials still non-stationary: ", sum((p_values > 0.05))))
+    
+    # # exclude the remaining few non-stationary trials
+    # if (hard_remove_all) {
+    #   channel_filtered <- channel_filtered[, which(p_values <= 0.05)]
+    # }
+    
+    LFP_stationary <- abind::abind(LFP_stationary, channel_filtered, along = 3)
+    
+  }
+  
+  LFP_stationary <- LFP_stationary[, , 2:(dim(LFP)[1] + 1)]
+  LFP_stationary <- aperm(LFP_stationary, c(3, 1, 2))
+  return(LFP_stationary)
+  # return(stationary_channels_ind)
+  
+}
+
+LFP_stationary <- transform_stationary(LFP = LFP, time_clipped_ind = time_clipped_ind)
+dim(LFP_stationary)
+LFP_stationary[1:3, 1:3, 1:3]
+
+
+
+
+
+
+
+
+
+
+
+
+
