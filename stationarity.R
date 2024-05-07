@@ -260,6 +260,7 @@ for(k in 1:dim(LFP)[1]) {
   }
   adf_result_notch[k] <- which.max(adf_result_notch_channel_k)
 }
+adf_result_notch
 
 
 
@@ -276,6 +277,7 @@ transform_stationary <- function(
     ensemble_adjusting,
     notch_filtering,
     sampling_rate,
+    notch_filter_order,
     print_remaining_non_stationary
     ) {
   
@@ -321,7 +323,7 @@ transform_stationary <- function(
       
       notch_filter <- signal::fir1(
         # filter order - higher -> filters with sharper frequency responses, better attenuation, more computation; lower -> smoother frequency responses, may not achieve as much attenuation
-        n = 10, 
+        n = notch_filter_order[i], 
         # band edges
         w = line_noise_norm,
         # notch filter
@@ -366,7 +368,8 @@ LFP_stationary <- transform_stationary(
   ensemble_adjusting = TRUE, 
   notch_filtering = TRUE,
   sampling_rate = sampling_rate,
-  print_remaining_non_stationary = FALSE
+  notch_filter_order = c(10, 10, 10, 10, 19, 19, 19, 19, 19, 7, 7, 7, 7, 7, 7),
+  print_remaining_non_stationary = TRUE
 )
 
 all(dim(LFP_stationary) == dim(LFP))

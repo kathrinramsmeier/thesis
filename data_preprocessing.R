@@ -119,6 +119,12 @@ frequency_bands <- list(
   high_gamma = c(80, 200)
 )
 
+# get channel information
+upper_channels <- probe$contact[probe$layer_category == "upper"]
+middle_channels <- probe$contact[probe$layer_category == "middle"]
+middle_channels[c(1, 3)] <- c(6, 8)
+deep_channels <- probe$contact[probe$layer_category == "deep"]
+
 
 
 # Data exploration --------------------------------------------------------
