@@ -35,7 +35,8 @@ plot(power, type = "l", main = "Corresponding FFT Power", xlab = "Frequency (Hz)
 par(mfrow = c(1, 1))
 
 # frequency axis
-freq_axis <- seq(0, sampling_rate, length.out = length(LFP_fftransformed) / 2)
+# freq_axis <- seq(0, sampling_rate, length.out = length(LFP_fftransformed) / 2)
+freq_axis <- seq(0, sampling_rate/2, length.out = length(LFP_fftransformed)/2 + 1) # or this??? 0 to Nyquist freq, N/2 + 1 = pos. freq from FFT
 
 # calculate the sum of power within each frequency band
 bands_power <- rep(0, length(frequency_bands))
