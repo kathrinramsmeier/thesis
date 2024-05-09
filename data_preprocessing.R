@@ -11,95 +11,138 @@ options(scipen = 1000)
 
 
 
-# Session C190127 ---------------------------------------------------------
+# Load Session Data -------------------------------------------------------
 
-# LFP
-LFP <- np$load("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\C190127-npy\\lfp_array_uv.npy")
-
-# electrode channel
-probe <- read.csv("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\C190127-npy\\probe.csv", header = FALSE)
-probe_header <- read.csv("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\C190127-npy\\probe_header.csv", header = FALSE)
-colnames(probe) <- probe_header
-# rm(list = "probe_header")
-
-# time
-time <- np$load("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\C190127-npy\\time_array_ms.npy")
-time <- time[1, ]
-
-# behaviour
-behaviour <- np$load("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\C190127-npy\\behavior.npy")
-behaviour_header <- read.csv("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\C190127-npy\\behavior_header.csv", header = FALSE)
-colnames(behaviour) <- behaviour_header
-behaviour <- as.data.frame(behaviour)
-rm(list = "behaviour_header")
-
-# task
-task <- read.csv("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\C190127-npy\\task.csv", header = FALSE)
-task_header <- read.csv("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\C190127-npy\\task_header.csv", header = FALSE)
-colnames(task) <- task_header
-rm(list = "task_header")
-
-# recordings info
-recordinginfo <- read.csv("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\C190127-npy\\recordinginfo.csv", header = FALSE)
-recordinginfo_header <- read.csv("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\C190127-npy\\recordinginfo_header.csv", header = FALSE)
-colnames(recordinginfo) <- recordinginfo_header
-rm(list = "recordinginfo_header")
-
-# probe
-probe <- read.csv("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\C190127-npy\\probe.csv", header = FALSE)
-probe_header <- read.csv("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\C190127-npy\\probe_header.csv", header = FALSE)
-colnames(probe) <- probe_header
-rm(list = "probe_header")
-
-
-
-# Data inspection ---------------------------------------------------------
-
-LFP[1:5, 1:5, 1:5] # electrode channel (1:15), time, trial
-dim(LFP)
-
-summary(time) # 0 is stimulus, before ore-stimulus, after past-stimulus
-length(time) # 2 values less than LFP
-dim(behaviour)
-
-probe # layer 1:5 = upper, 6:10 = middle, 11:15 = deep
-
-
-
-# Data preprocessing ------------------------------------------------------
-
-# add time value at the start and at the end
-time <- c(time[1] - diff(time[c(1, 2)]), time, rev(time)[1] + diff(rev(time)[c(1, 2)]))
-
-# exclude incorrect trials and catch trials (where the colours were the same) from LFP and task
-correct_trials_ind <- which(behaviour$accuracy_logical == 1)
-non_catch_trails_ind <- task$trial_number_count[(task$catch_trial_logical == 0)]
-trials_ind <- intersect(correct_trials_ind, non_catch_trails_ind)
-LFP <- LFP[, , trials_ind]
-task <- task[trials_ind, ] 
-task$trial_number_count <- 1:nrow(task)
-
-# # only investigate the LFP after stimulus onset and up to 600 ms after stimulus onset; clipping 10 ms after stimulus onset 
-# time_ind <- which(time > 10)
-# time <- time[time_ind]
-# LFP <- LFP[, time_ind, ]
-
-# clipping 10 ms before and after stimulus onset
-time_ind <- which(time > 10 | time < -10)
-time <- time[time_ind]
-LFP <- LFP[, time_ind, ]
+load_data <- function(session) {
+  
+  # delete data from previous session to get storage space
+  rm(list = c("LFP", "probe", "time", "behaviour", "task", "recordinginfo", "probe"))
+  
+  detach("package:reticulate")
+  library(reticulate)
+  np <- import("numpy")
+  
+  # LFP
+  LFP <- np$load(paste0("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\", session, "-npy\\lfp_array_uv.npy"))
+  
+  # electrode channel
+  probe <- read.csv(paste0("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\", session, "-npy\\probe.csv"), header = FALSE)
+  probe_header <- read.csv(paste0("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\", session, "-npy\\probe_header.csv"), header = FALSE)
+  colnames(probe) <- probe_header
+  rm(list = "probe_header")
+  
+  # time
+  time <- np$load(paste0("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\", session, "-npy\\time_array_ms.npy"))
+  time <- time[1, ]
+  
+  # behaviour
+  behaviour <- np$load(paste0("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\", session, "-npy\\behavior.npy"))
+  behaviour_header <- read.csv(paste0("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\", session, "-npy\\behavior_header.csv"), header = FALSE)
+  colnames(behaviour) <- behaviour_header
+  behaviour <- as.data.frame(behaviour)
+  rm(list = "behaviour_header")
+  
+  # task
+  task <- read.csv(paste0("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\", session, "-npy\\task.csv"), header = FALSE)
+  task_header <- read.csv(paste0("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\", session, "-npy\\task_header.csv"), header = FALSE)
+  colnames(task) <- task_header
+  rm(list = "task_header")
+  
+  # recordings info
+  recordinginfo <- read.csv(paste0("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\", session, "-npy\\recordinginfo.csv"), header = FALSE)
+  recordinginfo_header <- read.csv(paste0("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\", session, "-npy\\recordinginfo_header.csv"), header = FALSE)
+  colnames(recordinginfo) <- recordinginfo_header
+  rm(list = "recordinginfo_header")
+  
+  # probe
+  probe <- read.csv(paste0("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\", session, "-npy\\probe.csv"), header = FALSE)
+  probe_header <- read.csv(paste0("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\", session, "-npy\\probe_header.csv"), header = FALSE)
+  colnames(probe) <- probe_header
+  rm(list = "probe_header")
+  
+  return(list(
+    LFP = LFP, 
+    probe = probe, 
+    time = time,
+    behaviour = behaviour,
+    task = task,
+    recordinginfo = recordinginfo,
+    probe = probe
+  ))
+  
+}
 
 
 
-# Checks ------------------------------------------------------------------
+# Data for Session C190127 ------------------------------------------------
 
-dim(LFP)[1] == 15
-dim(LFP)[2] == length(time)
-dim(LFP)[3] == nrow(task)
-
+session <- "C190127"
+session_data <- load_data(session = session)
 
 
-# Necessary variables -----------------------------------------------------
+
+# Data Inspection ---------------------------------------------------------
+
+session_data$LFP[1:5, 1:5, 1:5] # electrode channel (1:15), time, trial
+dim(session_data$LFP)
+
+summary(session_data$time) # 0 is stimulus, before ore-stimulus, after past-stimulus
+length(session_data$time) # 2 values less than LFP
+dim(session_data$behaviour)
+
+session_data$probe # layer 1:5 = upper, 6:10 = middle, 11:15 = deep
+
+
+
+# Data Preprocessing ------------------------------------------------------
+
+data_preprocessing <- function(session_data) {
+  
+  # add time value at the start and at the end
+  session_data$time <- c(
+    session_data$time[1] - diff(session_data$time[c(1, 2)]), 
+    session_data$time, 
+    rev(session_data$time)[1] + diff(rev(session_data$time)[c(1, 2)])
+  )
+  
+  # exclude incorrect trials and catch trials (where the colours were the same) from LFP and task
+  correct_trials_ind <- which(session_data$behaviour$accuracy_logical == 1)
+  non_catch_trails_ind <- session_data$task$trial_number_count[(session_data$task$catch_trial_logical == 0)]
+  trials_ind <- intersect(correct_trials_ind, non_catch_trails_ind)
+  session_data$LFP <- session_data$LFP[, , trials_ind]
+  session_data$task <- session_data$task[trials_ind, ] 
+  session_data$task$trial_number_count <- 1:nrow(session_data$task)
+  
+  # # only investigate the LFP after stimulus onset and up to 600 ms after stimulus onset; clipping 10 ms after stimulus onset
+  # time_ind <- which(time > 10)
+  # session_data$time <- session_data$time[time_ind]
+  # session_data$LFP <- session_data$LFP[, time_ind, ]
+  
+  # clipping 10 ms before and after stimulus onset
+  time_ind <- which(session_data$time > 10 | session_data$time < -10)
+  session_data$time <- session_data$time[time_ind]
+  session_data$LFP <- session_data$LFP[, time_ind, ]
+  
+  # checks
+  stopifnot(
+    dim(session_data$LFP)[1] == 15 & 
+    dim(session_data$LFP)[2] == length(session_data$time) & 
+    dim(session_data$LFP)[3] == nrow(session_data$task)
+  )
+  
+  return(session_data)
+  
+}
+
+session_data <- data_preprocessing(session_data = session_data)
+
+# get the data sets out of the list into the global environment
+list2env(session_data, envir = .GlobalEnv)
+rm(list = "session_data")
+
+
+
+# Necessary Variables -----------------------------------------------------
 
 # filter all primed and unprimed trials (indices)
 primed_ind <- task$trial_number_count[task$block_trial_count %in% c(1, 2)]
@@ -150,4 +193,11 @@ colours = c("green", "blue", "violet")
 plot(time, LFP[1, , 100], type = "l", lwd = 2, col = colours[1], main = "LFP of a Sample Trial in 3 Different Channels (Lower, Middle and Upper")
 lines(time, LFP[8, , 100], lwd = 2, col = colours[2])
 lines(time, LFP[15, , 100], lwd = 2, col = colours[3])
+legend("bottomright", legend = paste("Channel", c(1, 8, 15)), col = colours, lty = 1, cex = 0.8)
+
+# stationary LFP of a sample trial over time for 3 cortical channels over time in one plot
+colours = c("green", "blue", "violet")
+plot(time, LFP_stationary[1, , 100], type = "l", lwd = 2, col = colours[1], main = "LFP of a Sample Trial in 3 Different Channels (Lower, Middle and Upper")
+lines(time, LFP_stationary[8, , 100], lwd = 2, col = colours[2])
+lines(time, LFP_stationary[15, , 100], lwd = 2, col = colours[3])
 legend("bottomright", legend = paste("Channel", c(1, 8, 15)), col = colours, lty = 1, cex = 0.8)
