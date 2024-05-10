@@ -1,11 +1,9 @@
-library(reticulate) # load npy data
-np <- import("numpy")
 library(tidyverse)  # data manipulation
 library(vars)       # VAR model
-library(tseries)    # ADF test
 library(bruceR)     # Granger causality
 library(multitaper) # Multitaper spectral analysis
 library(igraph)     # graphs for GC
+library(ggplot2)    # plots
 
 options(scipen = 1000)
 
@@ -13,50 +11,52 @@ options(scipen = 1000)
 
 # Load Session Data -------------------------------------------------------
 
+# delete data from previous session to get storage space
+rm(list = c("LFP", "probe", "time", "behaviour", "task", "recordinginfo", "probe"))
+
 load_data <- function(session) {
   
-  # delete data from previous session to get storage space
-  rm(list = c("LFP", "probe", "time", "behaviour", "task", "recordinginfo", "probe"))
-  
-  detach("package:reticulate")
+  # detach("package:reticulate")
   library(reticulate)
   np <- import("numpy")
   
+  setwd("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\")
+  
   # LFP
-  LFP <- np$load(paste0("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\", session, "-npy\\lfp_array_uv.npy"))
+  LFP <- np$load(paste0(session, "-npy\\lfp_array_uv.npy"))
   
   # electrode channel
-  probe <- read.csv(paste0("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\", session, "-npy\\probe.csv"), header = FALSE)
-  probe_header <- read.csv(paste0("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\", session, "-npy\\probe_header.csv"), header = FALSE)
+  probe <- read.csv(paste0(session, "-npy\\probe.csv"), header = FALSE)
+  probe_header <- read.csv(paste0(session, "-npy\\probe_header.csv"), header = FALSE)
   colnames(probe) <- probe_header
   rm(list = "probe_header")
   
   # time
-  time <- np$load(paste0("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\", session, "-npy\\time_array_ms.npy"))
+  time <- np$load(paste0(session, "-npy\\time_array_ms.npy"))
   time <- time[1, ]
   
   # behaviour
-  behaviour <- np$load(paste0("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\", session, "-npy\\behavior.npy"))
-  behaviour_header <- read.csv(paste0("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\", session, "-npy\\behavior_header.csv"), header = FALSE)
+  behaviour <- np$load(paste0(session, "-npy\\behavior.npy"))
+  behaviour_header <- read.csv(paste0(session, "-npy\\behavior_header.csv"), header = FALSE)
   colnames(behaviour) <- behaviour_header
   behaviour <- as.data.frame(behaviour)
   rm(list = "behaviour_header")
   
   # task
-  task <- read.csv(paste0("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\", session, "-npy\\task.csv"), header = FALSE)
-  task_header <- read.csv(paste0("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\", session, "-npy\\task_header.csv"), header = FALSE)
+  task <- read.csv(paste0(session, "-npy\\task.csv"), header = FALSE)
+  task_header <- read.csv(paste0(session, "-npy\\task_header.csv"), header = FALSE)
   colnames(task) <- task_header
   rm(list = "task_header")
   
   # recordings info
-  recordinginfo <- read.csv(paste0("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\", session, "-npy\\recordinginfo.csv"), header = FALSE)
-  recordinginfo_header <- read.csv(paste0("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\", session, "-npy\\recordinginfo_header.csv"), header = FALSE)
+  recordinginfo <- read.csv(paste0(session, "-npy\\recordinginfo.csv"), header = FALSE)
+  recordinginfo_header <- read.csv(paste0(session, "-npy\\recordinginfo_header.csv"), header = FALSE)
   colnames(recordinginfo) <- recordinginfo_header
   rm(list = "recordinginfo_header")
   
   # probe
-  probe <- read.csv(paste0("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\", session, "-npy\\probe.csv"), header = FALSE)
-  probe_header <- read.csv(paste0("C:\\Users\\ramsm\\Desktop\\Master\\Thesis\\data\\", session, "-npy\\probe_header.csv"), header = FALSE)
+  probe <- read.csv(paste0(session, "-npy\\probe.csv"), header = FALSE)
+  probe_header <- read.csv(paste0(session, "-npy\\probe_header.csv"), header = FALSE)
   colnames(probe) <- probe_header
   rm(list = "probe_header")
   
@@ -72,10 +72,6 @@ load_data <- function(session) {
   
 }
 
-
-
-# Data for Session C190127 ------------------------------------------------
-
 session <- "C190127"
 session_data <- load_data(session = session)
 
@@ -86,7 +82,7 @@ session_data <- load_data(session = session)
 session_data$LFP[1:5, 1:5, 1:5] # electrode channel (1:15), time, trial
 dim(session_data$LFP)
 
-summary(session_data$time) # 0 is stimulus, before ore-stimulus, after past-stimulus
+summary(session_data$time) # before stimulus, 0 is stimulus, past-stimulus
 length(session_data$time) # 2 values less than LFP
 dim(session_data$behaviour)
 
@@ -112,21 +108,40 @@ data_preprocessing <- function(session_data) {
   session_data$LFP <- session_data$LFP[, , trials_ind]
   session_data$task <- session_data$task[trials_ind, ] 
   session_data$task$trial_number_count <- 1:nrow(session_data$task)
+  session_data$behaviour <- session_data$behaviour[trials_ind, ]
   
-  # # only investigate the LFP after stimulus onset and up to 600 ms after stimulus onset; clipping 10 ms after stimulus onset
-  # time_ind <- which(time > 10)
-  # session_data$time <- session_data$time[time_ind]
-  # session_data$LFP <- session_data$LFP[, time_ind, ]
+  # for clipping: get the ind in the time vector that is closest to the reaction time
+  reaction_time_ind <- rep(NA, dim(session_data$LFP)[3])
+  for (i in 1:dim(session_data$LFP)[3]) {
+    reaction_time_ind[i] <- which.min(abs(session_data$time - session_data$behaviour$reaction_time_ms[i]))
+  }
   
-  # clipping 10 ms before and after stimulus onset
-  time_ind <- which(session_data$time > 10 | session_data$time < -10)
-  session_data$time <- session_data$time[time_ind]
-  session_data$LFP <- session_data$LFP[, time_ind, ]
+  # only keep the LFP after stimulus onset up to the minimum of 10 ms before reaction times
+  time <- matrix(nrow = dim(session_data$LFP)[3], ncol = 131)
+  LFP <- array(dim = c(dim(session_data$LFP)[1], 131, dim(session_data$LFP)[3]))
+  for (i in 1:dim(session_data$LFP)[3]) {
+    
+    # exclude about 10 ms before the reaction
+    clip_lower <- reaction_time_ind - 10
+    time_ind <- 1:min(clip_lower)
+    time_i <- session_data$time[time_ind]
+    
+    # only keep LFP after stimulus onset
+    time_ind <- which(time_i > 0)
+    time[i, ] <- time_i[time_ind]
+    for (j in 1:dim(LFP)[1]) {
+      LFP[j, , i] <- session_data$LFP[j, time_ind, i]
+    }
+  }
+
+  session_data$time <- time
+  session_data$LFP <- LFP
+  rm(list = c("time", "LFP"))
   
   # checks
   stopifnot(
     dim(session_data$LFP)[1] == 15 & 
-    dim(session_data$LFP)[2] == length(session_data$time) & 
+    dim(session_data$LFP)[2] == dim(session_data$time)[2] & 
     dim(session_data$LFP)[3] == nrow(session_data$task)
   )
   
@@ -175,29 +190,28 @@ deep_channels <- probe$contact[probe$layer_category == "deep"]
 # LFP of a sample trial over time for all cortical channels over time
 par(mfrow = c(4, 4))
 for (i in 1:dim(LFP)[1]) {
-  plot(time, LFP[i, , 100], type = "l", main = paste("LFP of a Sample Trial in Channel", i))
+  plot(time[100, ], LFP[i, , 100], type = "l", main = paste("LFP of a Sample Trial in Channel", i))
 }
 par(mfrow = c(1, 1))
 
 # LFP of a sample trial over time for all cortical channels over time in one plot
-bluePalette <- RColorBrewer::colorRampPalette(c("lightblue", "darkblue"))
-colours <- bluePalette(15)
-plot(time, LFP[1, , 100], type = "l", col = colours[1], main = "LFP of a Sample Trial in Different Channels")
+colours <- RColorBrewer::brewer.pal(15, "Greens")
+plot(time[100, ], LFP[1, , 100], type = "l", col = colours[1], main = "LFP of a Sample Trial in Different Channels")
 for (i in 2:dim(LFP)[1]) {
-  lines(time, LFP[i, , 100], col = colours[i])
+  lines(time[100, ], LFP[i, , 100], col = colours[i])
 }
 legend("topright", legend = paste("Channel", 1:dim(LFP)[1]), col = colours, lty = 1, cex = 0.4)
 
 # LFP of a sample trial over time for 3 cortical channels over time in one plot
 colours = c("green", "blue", "violet")
-plot(time, LFP[1, , 100], type = "l", lwd = 2, col = colours[1], main = "LFP of a Sample Trial in 3 Different Channels (Lower, Middle and Upper")
-lines(time, LFP[8, , 100], lwd = 2, col = colours[2])
-lines(time, LFP[15, , 100], lwd = 2, col = colours[3])
+plot(time[100, ], LFP[1, , 100], type = "l", lwd = 2, col = colours[1], main = "LFP of a Sample Trial in 3 Different Channels (Lower, Middle and Upper")
+lines(time[100, ], LFP[8, , 100], lwd = 2, col = colours[2])
+lines(time[100, ], LFP[15, , 100], lwd = 2, col = colours[3])
 legend("bottomright", legend = paste("Channel", c(1, 8, 15)), col = colours, lty = 1, cex = 0.8)
 
-# stationary LFP of a sample trial over time for 3 cortical channels over time in one plot
-colours = c("green", "blue", "violet")
-plot(time, LFP_stationary[1, , 100], type = "l", lwd = 2, col = colours[1], main = "LFP of a Sample Trial in 3 Different Channels (Lower, Middle and Upper")
-lines(time, LFP_stationary[8, , 100], lwd = 2, col = colours[2])
-lines(time, LFP_stationary[15, , 100], lwd = 2, col = colours[3])
-legend("bottomright", legend = paste("Channel", c(1, 8, 15)), col = colours, lty = 1, cex = 0.8)
+# # stationary LFP of a sample trial over time for 3 cortical channels over time in one plot
+# colours = c("green", "blue", "violet")
+# plot(time[100, ], LFP_stationary[1, , 100], type = "l", lwd = 2, col = colours[1], main = "LFP of a Sample Trial in 3 Different Channels (Lower, Middle and Upper")
+# lines(time[100, ], LFP_stationary[8, , 100], lwd = 2, col = colours[2])
+# lines(time[100, ], LFP_stationary[15, , 100], lwd = 2, col = colours[3])
+# legend("bottomright", legend = paste("Channel", c(1, 8, 15)), col = colours, lty = 1, cex = 0.8)
