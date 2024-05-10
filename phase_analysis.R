@@ -20,16 +20,23 @@ lines(sample_LFP_2, type = "l", col = "red")
 
 freqband_filtering <- function(LFP_trial, frequency_bands, sampling_rate, filter_order) {
   
-  nyquist_freq <- sampling_rate / 2
   LFP_freqband_filtered <- matrix(nrow = length(LFP_trial), ncol = length(frequency_bands))
   colnames(LFP_freqband_filtered) <- names(frequency_bands)
+  
+  nyquist_freq <- sampling_rate / 2
   
   # avoid numerical problem
   frequency_bands[[1]][1] <- 0.01
   
+  # loop over all frequency bands
   for (i in 1:length(frequency_bands)) {
+    
     freq_band <- c(frequency_bands[[i]][1], frequency_bands[[i]][2])
-    butterworth <- gsignal::butter(n = filter_order, w = freq_band / nyquist_freq, type = "pass") # try different filter order
+    
+    # butterworth filtering
+    butterworth <- gsignal::butter(n = filter_order, w = freq_band / nyquist_freq, type = "pass")
+    
+    # forward and reverse filtering (correction for phase distortion)
     LFP_freqband_filtered[, i] <- gsignal::filtfilt(filt = butterworth$b, a = butterworth$a, x = LFP_trial)
   }
   
@@ -58,18 +65,10 @@ sample_LFP_2_freqband_filtered <- freqband_filtering(
 # calculate coherence between two signals
 calculate_coherence <- function(LFP_trial_1_freqband_filtered, LFP_trial_2_freqband_filtered, meaned) {
   
-  coherences <- list()
+  coherences <- matrix(nrow = 9, ncol = ncol(LFP_trial_1_freqband_filtered))
   
   # loop over all frequency bands
-  for (i in 1:length(frequency_bands)) {
-    
-    # # Hilbert transform to get the analytical signal
-    # analytic_signal_1 <- gsignal::hilbert(LFP_trial_1_freqband_filtered)
-    # analytic_signal_2 <- gsignal::hilbert(LFP_trial_2_freqband_filtered)
-    # 
-    # # instantaneous phase
-    # phase_1 <- pracma::angle(analytic_signal_1)
-    # phase_2 <- pracma::angle(analytic_signal_2)
+  for (i in 1:ncol(LFP_trial_1_freqband_filtered)) {
     
     # cross-power spectral magnitudes and density autospectral densities
     # formulas from:
@@ -81,16 +80,19 @@ calculate_coherence <- function(LFP_trial_1_freqband_filtered, LFP_trial_2_freqb
     asd_2 <- gsignal::cpsd(cbind(LFP_trial_2_freqband_filtered[, i], LFP_trial_2_freqband_filtered[, i]))$cross
     
     # coherence
-    coherences[[i]] <- csd_magnitudes^2 / (asd_1 * asd_2)
+    coherences[, i] <- csd_magnitudes^2 / (asd_1 * asd_2)
     
   }
   
   # mean coherence in each frequency band !!!! need to check if that is plausible to do !!!!
   if(meaned) {
-    coherences <- sapply(coherences, mean)
+    coherences <- colMeans(coherences)
+    names(coherences) <- names(frequency_bands)
+    
+  } else {
+    colnames(coherences) <- names(frequency_bands)
   }
   
-  names(coherences) <- names(frequency_bands)
   return(coherences)
   
 }
@@ -107,41 +109,6 @@ calculate_coherence(
   LFP_trial_2_freqband_filtered = sample_LFP_2_freqband_filtered,
   meaned = TRUE
 )
-
-# plot phase coherence
-plot_coherence <- function(freqband_coherences, type) {
-  
-  coherence_df <- do.call(rbind, lapply(seq_along(freqband_coherences), function(i) {
-    data.frame(
-      time = seq(1, length(freqband_coherences[[i]])),
-      coherence = freqband_coherences[[i]],
-      frequency_band = names(freqband_coherences)[i]
-    )
-  }))
-  
-  colnames(coherence_df)[2] <- "coherence"
-  
-  if(type == "boxplot") {
-    plot <- ggplot(coherence_df, aes(x = frequency_band, y = coherence)) +
-      geom_boxplot() +
-      labs(title = "Coherence Across Frequency Bands", x = "", y = "Coherence") +
-      scale_fill_manual(values = rainbow(length(freqband_coherences))) +
-      theme_minimal() +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1))
-  } else {
-    plot <- ggplot(coherence_df, aes(x = time, y = coherence, color = frequency_band)) +
-      geom_point() +
-      labs(title = "Coherence Across Each Frequency Bands", x = "", y = "Coherence", color = "Frequency Band") +
-      theme_minimal() +
-      theme(legend.position = "bottom")
-  }
-  
-  print(plot)
-  
-}
-
-plot_coherence(freqband_coherences = freqband_coherences_sample_LFPs, type = "boxplot")
-plot_coherence(freqband_coherences = freqband_coherences_sample_LFPs, type = "")
 
 # compute coherence between the channels in each frequency band in a sample trial
 calculate_trial_coherence <- function(LFP, trial, frequency_bands, sampling_rate, filter_order) {
@@ -265,6 +232,10 @@ coherence_hat_primed <- calculate_avg_coherence(
   filter_order = 2
 )
 
+setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/coherence")
+saveRDS(coherence_hat_unprimed, paste0(session, "avg_coherence_unprimed.Rds"))
+saveRDS(coherence_hat_primed, paste0(session, "avg_coherence_primed.Rds"))
+
 # plot the average coherence between the channels for the different frequency bands as heatmaps
 plot_heatmap <- function(result_array, frequency_bands) {
   
@@ -287,91 +258,44 @@ plot_heatmap <- function(result_array, frequency_bands) {
 }
 
 plot_heatmap(result_array = avg_coherence_test, frequency_bands = frequency_bands)
-
-# TO DO: plot the heatmaps both for primed and unprimed LFP trials
+plot_heatmap(result_array = coherence_hat_unprimed, frequency_bands = frequency_bands)
+plot_heatmap(result_array = coherence_hat_primed, frequency_bands = frequency_bands)
 
 
 
 # Phase Locking Value (PLV) and Phase Lag Index (PLI) ---------------------
 
 # compute PLV and PLI across the frequency bands
+# formulas from: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3674231/#:~:text=PLV%20can%20therefore%20be%20viewed,each%20scaling%20of%20the%20wavelet.
 calculate_PLV_PLI <- function(LFP_trial_1_freqband_filtered, LFP_trial_2_freqband_filtered, PLV_PLI) {
   
   stopifnot(PLV_PLI %in% c("PLV", "PLI"))
   
-  result <- rep(NA, length(frequency_bands))
-  names(result) <- names(frequency_bands)
-  
-  calculate_PPC <- function(LFP_trial_1_freqband_filtered, LFP_trial_2_freqband_filtered) {
-  
-  result <- rep(NA, length(frequency_bands))
-  names(result) <- names(frequency_bands)
+  result <- rep(NA, dim(sample_LFP_1_freqband_filtered)[2])
+  names(result) <- colnames(sample_LFP_1_freqband_filtered)
   
   # loop over all frequency bands
-  for (i in 1:length(frequency_bands)) {
+  for (i in 1:dim(LFP_trial_1_freqband_filtered)[2]) {
     
-    # Initialize an empty vector to store phase differences across trials
-    phase_diffs <- numeric(length(LFP_trial_1_freqband_filtered))
+    # Hilbert transform to get the analytical signal
+    LFP_1_freqband_ht <- gsignal::hilbert(LFP_trial_1_freqband_filtered[, i])
+    LFP_2_freqband_ht <- gsignal::hilbert(LFP_trial_2_freqband_filtered[, i])
     
-    # Compute phase differences for each trial
-    for (trial in 1:length(LFP_trial_1_freqband_filtered)) {
-      # Hilbert transform to get the analytical signal
-      LFP_1_freqband_ht <- gsignal::hilbert(LFP_trial_1_freqband_filtered[[trial]][, i])
-      LFP_2_freqband_ht <- gsignal::hilbert(LFP_trial_2_freqband_filtered[[trial]][, i])
-      
-      # Compute phase difference
-      phase_diffs[trial] <- pracma::angle(LFP_1_freqband_ht * Conj(LFP_2_freqband_ht))  # arg((LFP_1_band_ht * Conj(LFP_2_band_ht)) / (abs(LFP_1_band_ht) * abs(LFP_2_band_ht)))
+    # compute phase difference
+    phase_diffs <- pracma::angle(LFP_1_freqband_ht * Conj(LFP_2_freqband_ht))  # arg((LFP_1_band_ht * Conj(LFP_2_band_ht)) / (abs(LFP_1_band_ht) * abs(LFP_2_band_ht)))
+    
+    if (PLV_PLI == "PLV") {
+      # compute the PLV for each frequency band
+      result[i] <- abs(mean(exp(1i * phase_diffs)))
+    } else {
+      # compute the PLI for each frequency band
+      result[i] <- abs(mean(sign(phase_diffs)))
     }
-    
-    # Compute PPC for each frequency band
-    result[i] <- abs(mean(exp(1i * phase_diffs)))
   }
   
   return(result)
   
 }
-
-  
-  return(result)
-  
-}
-
-# # compute PLV and PLI across the frequency bands
-# # formulas from: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3674231/#:~:text=PLV%20can%20therefore%20be%20viewed,each%20scaling%20of%20the%20wavelet.
-# calculate_PLV_PLI <- function(LFP_1, LFP_2, PLV_PLI, freq, frequency_bands) {
-#   
-#   stopifnot(PLV_PLI %in% c("PLV", "PLI"))
-#   
-#   result <- rep(NA, length(frequency_bands))
-#   names(result) <- names(frequency_bands)
-#   
-#   for (i in 1:length(frequency_bands)) {
-#     
-#     # filter the LFPs within the frequency band
-#     band_ind <- which(freq >= frequency_bands[[i]][1] & freq < frequency_bands[[i]][2])
-#     LFP_1_band <- LFP_1[band_ind]
-#     LFP_2_band <- LFP_2[band_ind]
-#     
-#     # Hilbert transform to get the analytical signal
-#     LFP_1_band_ht <- gsignal::hilbert(LFP_1_band)
-#     LFP_2_band_ht <- gsignal::hilbert(LFP_2_band)
-#     
-#     # relative phase
-#     rel_phase <- pracma::angle(LFP_1_band_ht * Conj(LFP_2_band_ht))  # arg((LFP_1_band_ht * Conj(LFP_2_band_ht)) / (abs(LFP_1_band_ht) * abs(LFP_2_band_ht)))
-#     
-#     if(PLV_PLI == "PLV") {
-#       # compute the PLV for each frequency band
-#       result[i] <- abs(mean(exp(1i * rel_phase)))
-#     } else {
-#       # compute the PLI for each frequency band
-#       result[i] <- abs(mean(sign(rel_phase)))
-#     }
-#     
-#   }
-#   
-#   return(result)
-#   
-# }
 
 # try PLV calc. for a sample trial for two different channels
 freqband_PLV_sample_LFPs <- calculate_PLV_PLI(
@@ -494,92 +418,7 @@ PPC_primed <- calculate_PLV_PLI_hat(
 
 
 
-# # compute pairwise PLV between the channels in each frequency band in a sample trial
-# PLV_channel_1 <- matrix(ncol = length(frequency_bands), nrow = dim(LFP_stationary)[3])
-# colnames(PLV_channel_1) <- names(frequency_bands)
-# for (i in 1:dim(LFP_stationary)[3]) {
-#   for (j in 1:dim(LFP_stationary)[3]) {
-#     PLV_channel_1[i, ] <- calculate_PLV_PLI(
-#       LFP_1 = LFP_stationary[1, , i], 
-#       LFP_2 = LFP_stationary[1, , j],
-#       PLV_PLI = "PLV",
-#       freq = freq_axis,
-#       frequency_bands = frequency_bands
-#     )
-#   }
-# }
-# dim(PLV_channel_1)
-# head(PLV_channel_1)
-# 
-# # averaging PLVs over trials for channel 1
-# # https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3674231/#:~:text=PLV%20can%20therefore%20be%20viewed,each%20scaling%20of%20the%20wavelet.
-# 
-# PLV_hat <- apply(PLV_channel_1, 2, mean)
-# PLV_hat
-# 
-# # compute PLV_hat or PLI_hat between the trials in each frequency band in channel i
-# calculate_PLV_PLI_hat <- function(LFP, PLV_PLI, un_primed_ind, freq, frequency_bands) {
-#   
-#   # filter either primed or unprimed trials
-#   LFP_trials <- LFP[, , un_primed_ind]
-#   
-#   # prepare matrix to store results
-#   PLV_PLI_hat_results <- matrix(nrow = dim(LFP_trials)[1], ncol = length(frequency_bands))
-#   rownames(PLV_PLI_hat_results) <- 1:dim(LFP_trials)[1]
-#   colnames(PLV_PLI_hat_results) <- names(frequency_bands)
-#   
-#   # compute pairwise PLV/PLI between the trials in each frequency band in each channel
-#   for (i in 1:dim(LFP_trials)[1]) {
-#     PLV_channel_i <- matrix(ncol = length(frequency_bands), nrow = dim(LFP_trials)[3])
-#     for (j in 1:dim(LFP_trials)[3]) {
-#       for (k in 1:dim(LFP_trials)[3]) {
-#         PLV_channel_i[j, ] <- calculate_PLV_PLI(
-#           LFP_1 = LFP_trials[i, , j], 
-#           LFP_2 = LFP_trials[i, , k],
-#           PLV_PLI = PLV_PLI,
-#           freq = freq,
-#           frequency_bands = frequency_bands
-#         )
-#       }
-#     }
-#     
-#     # average across trials
-#     PLV_PLI_hat_results[i, ] <- apply(PLV_channel_i, 2, mean)
-#   }
-#   
-#   return(PLV_PLI_hat_results)
-#   
-# }
-# 
-# # # test for a subset
-# # temp <- LFP_stationary[, , 1:10]
-# # temp2 <- unprimed_ind[unprimed_ind <= 10]
-# # PLV_hat_test <- calculate_PLV_PLI_hat(
-# #   LFP = temp,
-# #   PLV_PLI = "PLV",
-# #   un_primed_ind = temp2,
-# #   freq = freq_axis,
-# #   frequency_bands = frequency_bands
-# # )
-# # PLV_hat_test
-# 
-# # calculate PLI_hat for all frequency bands for unprimed trials
-# PLI_hat_unprimed <- calculate_PLV_PLI_hat(
-#   LFP = LFP_stationary, 
-#   PLV_PLI = "PLI",
-#   un_primed_ind = unprimed_ind,
-#   freq = freq_axis,
-#   frequency_bands = frequency_bands
-# )
-# 
-# # calculate PLI_hat for all frequency bands for primed trials
-# PLI_hat_primed <- calculate_PLV_PLI_hat(
-#   LFP = LFP_stationary,
-#   PLV_PLI = "PLI",
-#   un_primed_ind = primed_ind,
-#   freq = freq_axis,
-#   frequency_bands = frequency_bands
-# )
+
 
 
 
