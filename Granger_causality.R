@@ -1,4 +1,9 @@
 
+# TO DO: 
+# * adapt primed_ind, unprimed_ind if non-stationary trials were removed!!!!
+
+
+
 # VAR model creation ------------------------------------------------------
 
 # filter all primed and unprimed trials
@@ -11,12 +16,12 @@ LFP_stationary_trial1 <- t(LFP_stationary_trial1)
 dim(LFP_stationary_trial1) # time, channel
 
 # select lag for VAR model using AIC
-select_lag <- VARselect(LFP_stationary_trial1, type = "const", lag.max = 30) 
+select_lag <- VARselect(LFP_stationary_trial1, type = "const") 
 select_lag$selection
 plot(select_lag$criteria[1, ])
 
 # create the VAR model
-VAR_model_trial1 <- VAR(LFP_stationary_trial1, type = "const", p = 16)
+VAR_model_trial1 <- VAR(LFP_stationary_trial1, type = "const", p = select_lag$selection)
 
 
 
