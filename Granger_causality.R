@@ -1,14 +1,9 @@
 
-# TO DO: 
-# * adapt primed_ind, unprimed_ind if non-stationary trials were removed!!!!
-
-
-
-# VAR model creation ------------------------------------------------------
+# VAR Model Creation ------------------------------------------------------
 
 # filter all primed and unprimed trials
-LFP_stationary_primed <- LFP_stationary[, , primed_ind]
-LFP_stationary_unprimed <- LFP_stationary[, , unprimed_ind]
+LFP_stationary_primed <- LFP_stationary_hra[, , primed_ind_hra]
+LFP_stationary_unprimed <- LFP_stationary_hra[, , unprimed_ind_hra]
 
 # look at the first primed trial as an example
 LFP_stationary_trial1 <- LFP_stationary_primed[, , 1]
@@ -21,11 +16,11 @@ select_lag$selection
 plot(select_lag$criteria[1, ])
 
 # create the VAR model
-VAR_model_trial1 <- VAR(LFP_stationary_trial1, type = "const", p = select_lag$selection)
+VAR_model_trial1 <- VAR(LFP_stationary_trial1, type = "const", p = 4) # try with lower lag order because the model is to complex otherwise for that amount of observations
 
 
 
-# Granger causality -------------------------------------------------------
+# Granger Causality -------------------------------------------------------
 
 # H0: time series X does not cause time series Y to Granger-cause itself
 
@@ -60,7 +55,7 @@ sign_causalities <- c(t(sign_causalities))
 
 
 
-# Visualisation incl. all channels ----------------------------------------
+# Visualisation Incl. All Channels ----------------------------------------
 
 plot(
   graph(sign_causalities, directed = TRUE),
@@ -73,7 +68,7 @@ plot(
 
 
 
-# Visualisation incl. only layer levels -----------------------------------
+# Visualisation Incl. Only Layer Levels -----------------------------------
 
 # prepare matrix with layer information and p values
 layer_influencing <- rep(NA, nrow(GC_causality_p_values))
@@ -126,7 +121,7 @@ plot(
 legend(
   "bottomright",
   legend = c("Smaller Influence", "Bigger Influence"),
-  col = c(color_range[1], color_range[length(color_range)]),
+  col = c(colour_range[1], colour_range[length(colour_range)]),
   lty = 1,
   lwd = 2,
   cex = 0.8,
@@ -135,9 +130,9 @@ legend(
   
 
 
-# GC analysis for all trials ----------------------------------------------
+# GC Analysis for All Trials ----------------------------------------------
 
-GC_analysis <- function(LFP) {
+GC_analysis <- function(LFP, lag_order) {
   
   # prepare matrix for results
   combinations <- matrix(nrow = 15 * 15 - 15, ncol = 2)
@@ -164,8 +159,7 @@ GC_analysis <- function(LFP) {
     LFP_trial_i <- t(LFP_trial_i) 
     
     # VAR model creation (using AIC to determine the lag order)
-    select_lag <- VARselect(LFP_trial_i, lag.max = 30, type = "const") 
-    VAR_model_trial_i <- VAR(LFP_trial_i, type = "const", p = select_lag$selection[1])
+    VAR_model_trial_i <- VAR(LFP_trial_i, type = "const", p = lag_order)
     
     # Granger causality
     GC <- granger_causality(VAR_model_trial_i)
@@ -188,22 +182,22 @@ GC_analysis <- function(LFP) {
 }
 
 # GC analysis for some sample trials (making sure that the number of primed and unprimed trials is equal)
-num_samples <- 4
+num_samples <- 10
 set.seed(42)
-subset_trials_unprimed_ind <- sort(sample(unprimed_ind, num_samples / 2))
-subset_trials_primed_ind <- sort(sample(primed_ind, num_samples / 2))
+subset_trials_unprimed_ind <- sort(sample(unprimed_ind_hra, num_samples / 2))
+subset_trials_primed_ind <- sort(sample(primed_ind_hra, num_samples / 2))
 subset_trials_ind <- sort(c(subset_trials_unprimed_ind, subset_trials_primed_ind))
 start_time <- Sys.time()
-GC_p_values <- GC_analysis(LFP = LFP_stationary[, , subset_trials_ind])
+GC_p_values <- GC_analysis(LFP = LFP_stationary_hra[, , subset_trials_ind], type = "const", lag_order = 3)
 end_time <- Sys.time()
 end_time - start_time
 
 # estimation of time to run all
-((end_time - start_time) / num_samples * dim(LFP_stationary)[3]) / 60 # would take 16 hours (for just one session)
+((end_time - start_time) / num_samples * dim(LFP_stationary_hra)[3]) / 60
 
 # divide in primed and unprimed trials
-subset_unprimed_ind <- which(subset_trials_ind %in% unprimed_ind)
-subset_primed_ind <- which(subset_trials_ind %in% primed_ind)
+subset_unprimed_ind <- which(subset_trials_ind %in% unprimed_ind_hra)
+subset_primed_ind <- which(subset_trials_ind %in% primed_ind_hra)
 GC_p_values_unprimed <- GC_p_values[, c(1, 2, subset_unprimed_ind + 2)]
 GC_p_values_primed <- GC_p_values[, c(1, 2, subset_primed_ind + 2)]
 
@@ -214,9 +208,44 @@ percentage_sign_primed <- rowSums(GC_p_values_primed[, 3:ncol(GC_p_values_primed
   (ncol(GC_p_values_primed) - 2)
 percentage_sign <- cbind(GC_p_values_unprimed[, 1:2], percentage_sign_primed, percentage_sign_unprimed)
 
+# # put in a function
+# calculate_GC_percentage_significant <- function(LFP, lag_order, unprimed_ind, primed_ind) {
+#   
+#   # GC analysis
+#   GC_p_values <- GC_analysis(LFP = LFP, lag_order = lag_order)
+#   
+#   # divide in primed and unprimed trials
+#   subset_unprimed_ind <- which(subset_trials_ind %in% unprimed_ind)
+#   subset_primed_ind <- which(subset_trials_ind %in% primed_ind)
+#   GC_p_values_unprimed <- GC_p_values[, c(1, 2, subset_unprimed_ind + 2)]
+#   GC_p_values_primed <- GC_p_values[, c(1, 2, subset_primed_ind + 2)]
+#   
+#   # calculate the percentage of significant GC values for each channel combi (primed and unprimed condition)
+#   percentage_sign_unprimed <- rowSums(GC_p_values_unprimed[, 3:ncol(GC_p_values_unprimed)] < 0.05) / 
+#     (ncol(GC_p_values_unprimed) - 2)
+#   percentage_sign_primed <- rowSums(GC_p_values_primed[, 3:ncol(GC_p_values_primed)] < 0.05) / 
+#     (ncol(GC_p_values_primed) - 2)
+#   percentage_sign <- cbind(GC_p_values_unprimed[, 1:2], percentage_sign_primed, percentage_sign_unprimed)
+#   
+#   return(percentage_sign)
+#   
+# }
+
+calculate_GC_p_values <- function(LFP, un_primed_ind, lag_order) {
+  
+  # filter either primed or unprimed trials
+  LFP_trials <- LFP[, , un_primed_ind]
+  
+  # GC analysis
+  GC_p_values <- GC_analysis(LFP = LFP_trials, lag_order = lag_order)
+  
+  return(GC_p_values)
+  
+}
 
 
-# Network visualisation of GC influences ----------------------------------
+
+# Network Visualisation of GC Influences ----------------------------------
 
 plot_channel_influences <- function(percentage_sign) {
   
@@ -251,7 +280,7 @@ plot_channel_influences <- function(percentage_sign) {
     legend(
       "bottomright",
       legend = c("Smaller Influence", "Bigger Influence"),
-      col = c(color_range[1], color_range[length(color_range)]),
+      col = c(colour_range[1], colour_range[length(colour_range)]),
       lty = 1,
       lwd = 2,
       cex = 0.8
@@ -265,7 +294,7 @@ plot_channel_influences(percentage_sign = percentage_sign)
 
 
 
-# Network visualisation of GC influences (layer levels) -------------------
+# Network Visualisation of GC Influences (Layer Levels) -------------------
 
 # prepare matrix with layer information and p values
 layer_influencing <- rep(NA, nrow(GC_p_values))
@@ -287,61 +316,132 @@ percentage_sign <- cbind(
 percentage_sign_layer_level_unprimed <- rep(NA, nrow(percentage_sign))
 for (i in 1:nrow(percentage_sign)) {
   ind <- GC_p_values_layer_levels[, 1] %in% percentage_sign[i, 1] & GC_p_values_layer_levels[, 2] %in% percentage_sign[i, 2]
-  p_values_layer_level <- percentage_sign_unprimed[ind]
+  p_values_layer_level <- GC_p_values_layer_levels[ind, ]$adj_p_values_F
   percentage_sign_layer_level_unprimed[i] <- sum(p_values_layer_level < 0.05) / length(p_values_layer_level)
 }
 percentage_sign_layer_level_primed <- rep(NA, nrow(percentage_sign))
 for (i in 1:nrow(percentage_sign)) {
   ind <- GC_p_values_layer_levels[, 1] %in% percentage_sign[i, 1] & GC_p_values_layer_levels[, 2] %in% percentage_sign[i, 2]
-  p_values_layer_level <- percentage_sign_primed[ind]
+  p_values_layer_level <- GC_p_values_layer_levels[ind, ]$adj_p_values_F
   percentage_sign_layer_level_primed[i] <- sum(p_values_layer_level < 0.05) / length(p_values_layer_level)
 }
 percentage_sign <- cbind(percentage_sign, percentage_sign_layer_level_unprimed, percentage_sign_layer_level_primed)
 
-# plot the influences
-plot_layer_influences <- function(percentage_sign) {
+# put in a function
+transform_layer_levels <- function(GC_p_values) {
   
-  # for header
-  un_primed <- c(NA, NA, "Unprimed", "Primed")
+  # prepare matrix with layer information and p values
+  layer_influencing <- rep(NA, nrow(GC_p_values))
+  layer_influencing[GC_p_values[, 1] %in% upper_channels] <- "upper"
+  layer_influencing[GC_p_values[, 1] %in% middle_channels] <- "middle"
+  layer_influencing[GC_p_values[, 1] %in% deep_channels] <- "deep"
+  layer_influenced <- rep(NA, nrow(GC_p_values))
+  layer_influenced[GC_p_values[, 2] %in% upper_channels] <- "upper"
+  layer_influenced[GC_p_values[, 2] %in% middle_channels] <- "middle"
+  layer_influenced[GC_p_values[, 2] %in% deep_channels] <- "deep"
+  GC_p_values_layer_levels <- cbind(layer_influencing, layer_influenced, GC_p_values)
+  GC_p_values_layer_levels <- as.data.frame(GC_causality_p_values_layer_levels)
   
-  # for both primed and unprimed trials
-  for (i in c(3, 4)) {
-    
-    # assign colours to vertices based on influence
-    min_influence <- min(as.numeric(percentage_sign[, i]))
-    max_influence <- max(as.numeric(percentage_sign[, i]))
-    colour_range <- cm.colors(10) 
-    influence_colours <- colour_range[cut(
-      as.numeric(percentage_sign[, i]),
-      breaks = seq(min_influence, max_influence, length.out = length(colour_range) - 1),
-      include.lowest = TRUE
-    )]
-    
-    # plot the network with coloured nodes based on influence
-    plot(
-      graph_from_data_frame(percentage_sign[, 1:2], directed = TRUE),
-      layout = layout.circle,
-      vertex.label.cex = 1.5,
-      vertex.size = 30,
-      edge.arrow.size = 0.5,
-      edge.width = 3,
-      edge.color = influence_colours,
-      edge.curved = rep(0.1, nrow(percentage_sign)),
-      vertex.color = "white",
-      main = paste0("GC Relationships Between Cortical Layers for a Subset of ", un_primed[i], " Trials")
-    )
-    legend(
-      "bottomright",
-      legend = c("Smaller Influence", "Bigger Influence"),
-      col = c(color_range[1], color_range[length(color_range)]),
-      lty = 1,
-      lwd = 2,
-      cex = 0.8
-    )
-    
+  # calculate the percentage of significant GC combis
+  percentage_sign <- cbind(
+    c("upper", "upper", "upper", "middle", "middle", "middle", "deep", "deep", "deep"),
+    c("upper", "middle", "deep", "upper", "middle", "deep", "upper", "middle", "deep")
+  )
+  percentage_sign_layer_level <- rep(NA, nrow(percentage_sign))
+  for (i in 1:nrow(percentage_sign)) {
+    ind <- GC_p_values_layer_levels[, 1] %in% percentage_sign[i, 1] & GC_p_values_layer_levels[, 2] %in% percentage_sign[i, 2]
+    p_values_layer_level <- GC_p_values_layer_levels[ind, ]$adj_p_values_F
+    percentage_sign_layer_level[i] <- sum(p_values_layer_level < 0.05) / length(p_values_layer_level)
   }
+  
+  return(percentage_sign_layer_level)
   
 }
 
-plot_layer_influences(percentage_sign = percentage_sign)
+# # plot the influences
+# plot_layer_influences <- function(percentage_sign) {
+#   
+#   # for header
+#   un_primed <- c(NA, NA, "Unprimed", "Primed")
+#   
+#   # for both primed and unprimed trials
+#   for (i in c(3, 4)) {
+#     
+#     # assign colours to vertices based on influence
+#     min_influence <- min(as.numeric(percentage_sign[, i]))
+#     max_influence <- max(as.numeric(percentage_sign[, i]))
+#     colour_range <- cm.colors(10) 
+#     influence_colours <- colour_range[cut(
+#       as.numeric(percentage_sign[, i]),
+#       breaks = seq(min_influence, max_influence, length.out = length(colour_range) - 1),
+#       include.lowest = TRUE
+#     )]
+#     
+#     # plot the network with coloured nodes based on influence
+#     plot(
+#       graph_from_data_frame(percentage_sign[, 1:2], directed = TRUE),
+#       layout = layout.circle,
+#       vertex.label.cex = 1.5,
+#       vertex.size = 30,
+#       edge.arrow.size = 0.5,
+#       edge.width = 3,
+#       edge.color = influence_colours,
+#       edge.curved = rep(0.1, nrow(percentage_sign)),
+#       vertex.color = "white",
+#       main = paste0("GC Relationships Between Cortical Layers for a Subset of ", un_primed[i], " Trials")
+#     )
+#     legend(
+#       "bottomright",
+#       legend = c("Smaller Influence", "Bigger Influence"),
+#       col = c(colour_range[1], colour_range[length(colour_range)]),
+#       lty = 1,
+#       lwd = 2,
+#       cex = 0.8
+#     )
+#     
+#   }
+#   
+# }
+# 
+# plot_layer_influences(percentage_sign = percentage_sign)
+
+# plot the influences (unprimed, primed separate)
+plot_layer_influences <- function(percentage_sign, un_primed) {
+    
+  # assign colours to vertices based on influence
+  min_influence <- min(as.numeric(percentage_sign[, 3]))
+  max_influence <- max(as.numeric(percentage_sign[, 3]))
+  colour_range <- cm.colors(10)
+  influence_colours <- colour_range[cut(
+    as.numeric(percentage_sign[, 3]),
+    breaks = seq(min_influence, max_influence, length.out = length(colour_range) - 1),
+    include.lowest = TRUE
+  )]
+  
+  # plot the network with coloured nodes based on influence
+  plot(
+    graph_from_data_frame(percentage_sign[, 1:2], directed = TRUE),
+    layout = layout.circle,
+    vertex.label.cex = 1.5,
+    vertex.size = 30,
+    edge.arrow.size = 0.5,
+    edge.width = 3,
+    edge.color = influence_colours,
+    edge.curved = rep(0.1, nrow(percentage_sign)),
+    vertex.color = "white",
+    main = paste0(
+      "GC Relationships Between Cortical Layers for a Subset of ", un_primed, " Trials"
+    )
+  )
+  legend(
+    "bottomright",
+    legend = c("Smaller Influence", "Bigger Influence"),
+    col = c(colour_range[1], colour_range[length(colour_range)]),
+    lty = 1,
+    lwd = 2,
+    cex = 0.8
+  )
+  
+}
+
 
