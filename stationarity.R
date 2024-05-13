@@ -235,34 +235,41 @@ examine_autocorr(LFP_notch_filtered) # not much difference compared to baseline
 # LFP_notch_filtered <- LFP_notch_filtered[, which(p_values < 0.05)]
 
 # find the best filter order for each channel (first run transform_stationary() with notch_filtering = FALSE)
-adf_result_notch <- rep(NA, dim(LFP)[1])
-for(k in 1:dim(LFP)[1]) {
+find_best_filter_order <- function(LFP){
   
-  LFP_stationary_channel_k <- LFP_stationary[k, , ]
-  adf_result_notch_channel_k <- rep(NA, 30)
-  
-  # try different values for the filter order
-  for(j in 1:30){
-    notch_filter <- signal::fir1(
-      # filter order - higher -> filters with sharper frequency responses, better attenuation, more computation; lower -> smoother frequency responses, may not achieve as much attenuation
-      n = j,
-      # band edges
-      w = line_noise_norm,
-      # notch filter
-      type = "stop"
-    )
-    # notch filtering each LFP trial
-    LFP_filtered <- array(dim = dim(LFP_stationary_channel_k))
-    for(i in 1:ncol(LFP_filtered)) {
-      LFP_filtered[, i] <- signal::filter(filt = notch_filter, x = LFP_stationary_channel_k[, i])
+  adf_result_notch <- rep(NA, dim(LFP)[1])
+  for(k in 1:dim(LFP)[1]) {
+    
+    LFP_stationary_channel_k <- LFP[k, , ]
+    adf_result_notch_channel_k <- rep(NA, 30)
+    
+    # try different values for the filter order
+    for(j in 1:30){
+      notch_filter <- signal::fir1(
+        # filter order - higher -> filters with sharper frequency responses, better attenuation, more computation; lower -> smoother frequency responses, may not achieve as much attenuation
+        n = j,
+        # band edges
+        w = line_noise_norm,
+        # notch filter
+        type = "stop"
+      )
+      # notch filtering each LFP trial
+      LFP_filtered <- array(dim = dim(LFP_stationary_channel_k))
+      for(i in 1:ncol(LFP_filtered)) {
+        LFP_filtered[, i] <- signal::filter(filt = notch_filter, x = LFP_stationary_channel_k[, i])
+      }
+      # ADF test for stationarity
+      adf_result_notch_channel_k[j] <- adf_stationarity_test(LFP_filtered, channel = "all")
     }
-    # ADF test for stationarity
-    adf_result_notch_channel_k[j] <- adf_stationarity_test(LFP_filtered, channel = "all")
+    # get the filter order for which the most trials are stationary
+    adf_result_notch[k] <- which.max(adf_result_notch_channel_k)
   }
-  # get the filter order for which the most trials are stationary
-  adf_result_notch[k] <- which.max(adf_result_notch_channel_k)
+  
+  return(adf_result_notch)
+  
 }
-adf_result_notch
+
+adf_result_notch <- find_best_filter_order(LFP = LFP_stationary)
 
 setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/notch_filter_order")
 saveRDS(adf_result_notch, paste0(session, "_notch_filter_order.Rds"))
@@ -351,7 +358,7 @@ transform_stationary <- function(
       for (j in 1:ncol(LFP_channel_i)) {
         p_values[j] <- tseries::adf.test(LFP_channel_i[, j])$p.value
       }
-      print(paste0("Channel ", i, ": Number of LFP trials still non-stationary: ", sum(p_values > 0.05)))
+      print(paste0("Channel ", i, ": Number of LFP trials still non-stationary (before removing all): ", sum(p_values > 0.05)))
     }
     
     LFP_stationary <- abind::abind(LFP_stationary, LFP_channel_i, along = 3)
@@ -406,13 +413,27 @@ LFP_stationary <- transform_stationary(
   notch_filter_order = notch_filter_order,
   sampling_rate = sampling_rate,
   print_remaining_non_stationary = FALSE,
+  hard_remove_all = FALSE
+)
+
+LFP_stationary[1:3, 1:3, 1:3]
+
+LFP_stationary_hra <- transform_stationary(
+  LFP = LFP, 
+  detrending = TRUE, 
+  normalising = TRUE, 
+  ensemble_adjusting = TRUE, 
+  notch_filtering = TRUE,
+  notch_filter_order = notch_filter_order,
+  sampling_rate = sampling_rate,
+  print_remaining_non_stationary = FALSE,
   hard_remove_all = TRUE
 )
 
-all(dim(LFP_stationary) == dim(LFP))
-LFP_stationary[1:3, 1:3, 1:3]
+dim(LFP_stationary_hra)
 
-
-
-
-
+# adapt unprimed and primed ind to removed trials
+unprimed_ind_hra <- unprimed_ind[which(unprimed_ind %in% c(1:dim(LFP_stationary_hra)[3]))]
+primed_ind_hra <- primed_ind[which(primed_ind %in% c(1:dim(LFP_stationary_hra)[3]))]
+length(unprimed_ind_hra)
+length(primed_ind_hra)
