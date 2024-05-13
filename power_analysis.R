@@ -298,7 +298,7 @@ plot_power <- function(mean_bands_power_unprimed, mean_bands_power_primed) {
 plot_power(
   mean_bands_power_unprimed = mean_bands_power_unprimed, 
   mean_bands_power_primed = mean_bands_power_primed
-)
+) # primed is dark blue, unprimed light blue
 
 
 
@@ -392,4 +392,4 @@ plot_power_heatmaps(
 plot_power(
   mean_bands_power_unprimed = mean_bands_power_unprimed, 
   mean_bands_power_primed = mean_bands_power_primed
-)
+) # primed is dark blue, unprimed light blue

@@ -271,8 +271,8 @@ calculate_PLV_PLI <- function(LFP_trial_1_freqband_filtered, LFP_trial_2_freqban
   
   stopifnot(PLV_PLI %in% c("PLV", "PLI"))
   
-  result <- rep(NA, dim(sample_LFP_1_freqband_filtered)[2])
-  names(result) <- colnames(sample_LFP_1_freqband_filtered)
+  result <- rep(NA, dim(LFP_trial_1_freqband_filtered)[2])
+  names(result) <- colnames(LFP_trial_1_freqband_filtered)
   
   # loop over all frequency bands
   for (i in 1:dim(LFP_trial_1_freqband_filtered)[2]) {
@@ -377,7 +377,7 @@ PPC_test[1:3, 1:3, 1:3]
 plot_heatmap(result_array = PPC_test, frequency_bands = frequency_bands)
 
 # calculate PPC - PLV between the channels for all frequency bands for unprimed trials
-PPC_unprimed <- calculate_PPC(
+PPC_PLV_unprimed <- calculate_PPC(
   LFP = LFP_stationary,
   un_primed_ind = unprimed_ind,
   frequency_bands = frequency_bands,
@@ -387,7 +387,7 @@ PPC_unprimed <- calculate_PPC(
 )
 
 # calculate PPC - PLV between the channels for all frequency bands for primed trials
-PPC_primed <- calculate_PPC(
+PPC_PLV_primed <- calculate_PPC(
   LFP = LFP_stationary,
   un_primed_ind = primed_ind,
   frequency_bands = frequency_bands,
@@ -397,7 +397,7 @@ PPC_primed <- calculate_PPC(
 )
 
 # calculate PPC - PLI between the channels for all frequency bands for unprimed trials
-PPC_unprimed <- calculate_PLV_PLI_hat(
+PPC_PLI_unprimed <- calculate_PLV_PLI_hat(
   LFP = LFP_stationary,
   un_primed_ind = unprimed_ind,
   frequency_bands = frequency_bands,
@@ -407,7 +407,7 @@ PPC_unprimed <- calculate_PLV_PLI_hat(
 )
 
 # calculate PPC - PLI between the channels for all frequency bands for primed trials
-PPC_primed <- calculate_PLV_PLI_hat(
+PPC_PLI_primed <- calculate_PLV_PLI_hat(
   LFP = LFP_stationary,
   un_primed_ind = primed_ind,
   frequency_bands = frequency_bands,

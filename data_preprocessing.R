@@ -185,7 +185,7 @@ deep_channels <- probe$contact[probe$layer_category == "deep"]
 
 
 
-# Data exploration --------------------------------------------------------
+# Data Exploration --------------------------------------------------------
 
 # LFP of a sample trial over time for all cortical channels over time
 par(mfrow = c(4, 4))
