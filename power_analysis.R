@@ -5,7 +5,7 @@
 
 # Power Calculation for Frequency Bands (One Example Trial) ---------------
 
-# look at the 6th channel and 333 trial as an example first
+# look at the 6th channel of trial 333 as an example first
 channel <- 6
 trial <- 333
 sample_LFP <- LFP_stationary[channel, , trial]
@@ -19,13 +19,18 @@ plot(time[trial, ], LFP_hanning_windowed, type = "l", xlab = "Time", ylab = "", 
 par(mfrow = c(1, 1))
 
 # Fourier transform to get power
-LFP_fftransformed <- fft(LFP_hanning_windowed)
+LFP_fftransformed <- fft(LFP_hanning_windowed) # frequencies ranging from 0 Hz to the sampling rate
 
-# frequency bins
+# spacing between adjacent frequency bins in the resulting power spectrum (ratio of the sampling rate to the length of the data or the filter window used in the Fourier transform operation)
 freq_resolution <- sampling_rate / length(LFP_hanning_windowed)
-freq_bins <- seq(0, sampling_rate / 2, by = freq_resolution)
 
-# calculate the power spectrum for the first half of the spectrum
+# frequency bins (frequencies at which the power spectrum will be computed)
+# these frequencies are evenly spaced across the frequency range from 0 Hz to the Nyquist frequency and they represent the bins in which the power spectrum is organised
+# Nyquist-Shannon Sampling Theorem: signal must be sampled at least twice as fast as the bandwidth of the signal to accurately reconstruct the waveform
+# -> highest frequency that can be accurately represented in the frequency domain is half of the sampling rate 
+freq_bins <- seq(0, nyquist_freq, by = freq_resolution)
+
+# calculate the power spectrum (for the first half of the spectrum)
 power <- abs(LFP_fftransformed[1:length(freq_bins)])^2
 
 par(mfrow = c(2, 1))
@@ -40,7 +45,7 @@ for (i in 1:length(frequency_bands)){
   ind <- which(freq_bins >= frequency_bands[[i]][1] & freq_bins < frequency_bands[[i]][2])
   bands_power[i] <- sum(power[ind])
 }
-bands_power
+bands_power # maybe more observations are needed such that freq_resolution is bigger 
 
 
 
@@ -49,17 +54,20 @@ bands_power
 calculate_freqband_trial_power <- function(LFP_trial, frequency_bands, sampling_rate) {
   
   # Hanning windowing
-  LFP_hanning_windowed <- LFP_trial * gsignal::hanning(n = length(LFP_trial), method = "periodic")
+  LFP_hanning_windowed <- LFP_trial * gsignal::hanning(n = 30, method = "periodic")
   
   # Fourier transform to get power
-  LFP_fftransformed <- fft(LFP_hanning_windowed)
+  LFP_fftransformed <- fft(LFP_hanning_windowed) 
   
   # frequency bins
   freq_resolution <- sampling_rate / length(LFP_hanning_windowed)
-  freq_bins <- seq(0, sampling_rate / 2, by = freq_resolution)
+  freq_bins <- seq(0, nyquist_freq, by = freq_resolution)
   
   # calculate the power spectrum for the first half of the spectrum
   power <- abs(LFP_fftransformed[1:length(freq_bins)])^2
+  # power <- (abs(LFP_fftransformed)^2)[1:round(length(LFP_fftransformed)/2)]
+  
+  # plot(freq_bins, power, type = "l", xlab = "Hz", ylab = "power")
   
   # calculate the sum of power within each frequency band
   bands_power <- rep(0, length(frequency_bands))
@@ -124,7 +132,7 @@ calculate_freqband_trial_power(
 
 # Power of LFP for Bands, Channels and Priming Status (Approach 1) --------
 
-calculate_bands_power <- function(LFP, electrode_channel, un_primed_ind, frequency_bands) {
+calculate_bands_power <- function(LFP, electrode_channel, un_primed_ind, hanning_windowed, frequency_bands) {
   
   # filter either primed or unprimed trials and the electrode channel
   LFP_trials <- LFP[electrode_channel, , un_primed_ind]
@@ -139,15 +147,17 @@ calculate_bands_power <- function(LFP, electrode_channel, un_primed_ind, frequen
     
     trial <- LFP_trials[, i]
     
-    # Hanning windowing
-    LFP_hanning_windowed <- trial * gsignal::hanning(n = length(trial), method = "periodic")
+    if(hanning_windowed) {
+      # Hanning windowing
+      trial <- trial * gsignal::hanning(n = 30, method = "periodic")
+    }
     
     # Fourier transform to get power
-    LFP_fftransformed <- fft(LFP_hanning_windowed)
+    LFP_fftransformed <- fft(trial)
     
     # frequency bins
     freq_resolution <- sampling_rate / length(LFP_hanning_windowed)
-    freq_bins <- seq(0, sampling_rate/2, by = freq_resolution)
+    freq_bins <- seq(0, nyquist_freq, by = freq_resolution)
     
     # calculate the power spectrum for the first half of the spectrum
     power <- abs(LFP_fftransformed[1:length(freq_bins)])^2
@@ -172,13 +182,14 @@ rel_bands_power_unprimed_ch6 <- calculate_bands_power(
   LFP = LFP_stationary,
   frequency_bands = frequency_bands,
   un_primed_ind = unprimed_ind,
+  hanning_windowed = FALSE,
   electrode_channel = channel
 )
 head(rel_bands_power_unprimed_ch6)
 apply(rel_bands_power_unprimed_ch6, 2, mean)
 
 # mean bands power in every channel
-calculate_mean_bands_power <- function(LFP, un_primed_ind, frequency_bands) {
+calculate_mean_bands_power <- function(LFP, un_primed_ind, hanning_windowed, frequency_bands) {
   
   # prepare matrix to store the results
   rel_bands_power_un_primed <- matrix(nrow = dim(LFP)[1], ncol = length(frequency_bands))
@@ -191,6 +202,7 @@ calculate_mean_bands_power <- function(LFP, un_primed_ind, frequency_bands) {
       LFP = LFP,
       frequency_bands = frequency_bands, 
       un_primed_ind = un_primed_ind,
+      hanning_windowed = hanning_windowed,
       electrode_channel = i
     )
     rel_bands_power_un_primed[i, ] <- apply(rel_bands_power_un_primed_ch, 2, mean)
@@ -204,6 +216,7 @@ calculate_mean_bands_power <- function(LFP, un_primed_ind, frequency_bands) {
 mean_bands_power_unprimed <- calculate_mean_bands_power(
   LFP = LFP_stationary, 
   un_primed_ind = unprimed_ind,
+  hanning_windowed = TRUE,
   frequency_bands = frequency_bands
 )
 
@@ -211,6 +224,7 @@ mean_bands_power_unprimed <- calculate_mean_bands_power(
 mean_bands_power_primed <- calculate_mean_bands_power(
   LFP = LFP_stationary, 
   un_primed_ind = primed_ind,
+  hanning_windowed = TRUE,
   frequency_bands = frequency_bands
 )
 

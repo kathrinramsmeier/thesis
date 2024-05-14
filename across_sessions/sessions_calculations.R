@@ -91,23 +91,39 @@ saveRDS(LFP_stationary_hra, paste0(session, "_LFP_stationary_hra.Rds"))
 # Power Analysis ----------------------------------------------------------
 
 # mean band power in every channel for unprimed trials
+mean_bands_power_hanning_windowed_unprimed <- calculate_mean_bands_power(
+  LFP = LFP_stationary, 
+  un_primed_ind = unprimed_ind,
+  hanning_windowed = TRUE,
+  frequency_bands = frequency_bands
+)
 mean_bands_power_unprimed <- calculate_mean_bands_power(
   LFP = LFP_stationary, 
   un_primed_ind = unprimed_ind,
+  hanning_windowed = FALSE,
   frequency_bands = frequency_bands
 )
 
 # mean band power in every channel for primed trials
+mean_bands_power_hanning_windowed_primed <- calculate_mean_bands_power(
+  LFP = LFP_stationary, 
+  un_primed_ind = primed_ind,
+  hanning_windowed = TRUE,
+  frequency_bands = frequency_bands
+)
 mean_bands_power_primed <- calculate_mean_bands_power(
   LFP = LFP_stationary, 
   un_primed_ind = primed_ind,
+  hanning_windowed = FALSE,
   frequency_bands = frequency_bands
 )
 
 # save power analysis results
 setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/power/unprimed")
+saveRDS(mean_bands_power_hanning_windowed_unprimed, paste0(session, "_mean_bands_power_hanning_windowed_unprimed.Rds"))
 saveRDS(mean_bands_power_unprimed, paste0(session, "_mean_bands_power_unprimed.Rds"))
 setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/power/primed")
+saveRDS(mean_bands_power_hanning_windowed_primed, paste0(session, "_mean_bands_power_hanning_windowed_primed.Rds"))
 saveRDS(mean_bands_power_primed, paste0(session, "_mean_bands_power_primed.Rds"))
 
 
@@ -153,7 +169,7 @@ PPC_PLV_primed <- calculate_PPC(
 )
 
 # calculate PPC - PLI between the channels for all frequency bands for unprimed trials
-PPC_PLI_unprimed <- calculate_PLV_PLI_hat(
+PPC_PLI_unprimed <- calculate_PPC(
   LFP = LFP_stationary,
   un_primed_ind = unprimed_ind,
   frequency_bands = frequency_bands,
@@ -163,7 +179,7 @@ PPC_PLI_unprimed <- calculate_PLV_PLI_hat(
 )
 
 # calculate PPC - PLI between the channels for all frequency bands for primed trials
-PPC_PLI_primed <- calculate_PLV_PLI_hat(
+PPC_PLI_primed <- calculate_PPC(
   LFP = LFP_stationary,
   un_primed_ind = primed_ind,
   frequency_bands = frequency_bands,
