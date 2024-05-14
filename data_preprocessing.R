@@ -92,7 +92,7 @@ session_data$probe # layer 1:5 = upper, 6:10 = middle, 11:15 = deep
 
 # Data Preprocessing ------------------------------------------------------
 
-data_preprocessing <- function(session_data) {
+data_preprocessing <- function(session_data, same_lengths) {
   
   # add time value at the start and at the end
   session_data$time <- c(
@@ -116,40 +116,72 @@ data_preprocessing <- function(session_data) {
     reaction_time_ind[i] <- which.min(abs(session_data$time - session_data$behaviour$reaction_time_ms[i]))
   }
   
-  # only keep the LFP after stimulus onset up to the minimum of 10 ms before reaction times
-  time <- matrix(nrow = dim(session_data$LFP)[3], ncol = 131)
-  LFP <- array(dim = c(dim(session_data$LFP)[1], 131, dim(session_data$LFP)[3]))
-  for (i in 1:dim(session_data$LFP)[3]) {
+  if (same_lengths) {
     
     # exclude about 10 ms before the reaction
-    clip_lower <- reaction_time_ind - 10
-    time_ind <- 1:min(clip_lower)
+    clip <- reaction_time_ind - 10
+    time_ind <- 1:min(clip)
     time_i <- session_data$time[time_ind]
     
     # only keep LFP after stimulus onset
     time_ind <- which(time_i > 0)
-    time[i, ] <- time_i[time_ind]
-    for (j in 1:dim(LFP)[1]) {
-      LFP[j, , i] <- session_data$LFP[j, time_ind, i]
+    
+    # only keep the LFP after stimulus onset up to the minimum of 10 ms before reaction times
+    time <- matrix(nrow = dim(session_data$LFP)[3], ncol = length(time_ind))
+    LFP <- array(dim = c(dim(session_data$LFP)[1], length(time_ind), dim(session_data$LFP)[3]))
+    for (i in 1:dim(session_data$LFP)[3]) {
+      time[i, ] <- time_i[time_ind]
+      for (j in 1:dim(LFP)[1]) {
+        LFP[j, , i] <- session_data$LFP[j, time_ind, i]
+      }
     }
+    
+  } else {
+    
+    # exclude about 10 ms before the reaction
+    clip <- reaction_time_ind - 10
+    time <- list()
+    LFP <- vector("list", length = dim(session_data$LFP)[1])
+    
+    for (i in 1:dim(session_data$LFP)[3]) {
+      
+      # exclude about 10 ms before the reaction
+      time_ind <- 1:clip[i]
+      time_i <- session_data$time[time_ind]
+      
+      # only keep LFP after stimulus onset
+      time_ind <- which(time_i > 0)
+      time[[i]] <- time_i[time_ind]
+      
+      # loop over all channels
+      for (j in 1:15) {
+        LFP[[j]][[i]] <- session_data$LFP[j, time_ind, i]
+      }
+    }
+    # LFP: channels, trials, time
+    
   }
 
   session_data$time <- time
   session_data$LFP <- LFP
   rm(list = c("time", "LFP"))
   
-  # checks
-  stopifnot(
-    dim(session_data$LFP)[1] == 15 & 
-    dim(session_data$LFP)[2] == dim(session_data$time)[2] & 
-    dim(session_data$LFP)[3] == nrow(session_data$task)
-  )
+  if (same_lengths) {
+    
+    # checks
+    stopifnot(
+      dim(session_data$LFP)[1] == 15 &
+      dim(session_data$LFP)[2] == dim(session_data$time)[2] &
+      dim(session_data$LFP)[3] == nrow(session_data$task)
+    )
+    
+  }
   
   return(session_data)
   
 }
 
-session_data <- data_preprocessing(session_data = session_data)
+session_data <- data_preprocessing(session_data = session_data, same_lengths = TRUE)
 
 # get the data sets out of the list into the global environment
 list2env(session_data, envir = .GlobalEnv)
@@ -165,6 +197,7 @@ unprimed_ind <- task$trial_number_count[!(task$block_trial_count %in% c(1, 2))]
 
 # sampling rate
 sampling_rate <- recordinginfo$data_sampling_rate_hz
+nyquist_freq <- sampling_rate / 2
 
 # frequency bands
 # https://ncbi.nlm.nih.gov/pmc/articles/PMC3122299/#:~:text=Neural%20oscillations%20are%20electrical%20activities,gamma%20(%3E80%20Hz).
