@@ -60,7 +60,7 @@ calculate_freqband_trial_power <- function(LFP_trial, frequency_bands, sampling_
   LFP_fftransformed <- fft(LFP_hanning_windowed) 
   
   # frequency bins
-  freq_resolution <- sampling_rate / length(LFP_hanning_windowed)
+  freq_resolution <- sampling_rate / length(LFP_fftransformed)
   freq_bins <- seq(0, nyquist_freq, by = freq_resolution)
   
   # calculate the power spectrum for the first half of the spectrum
@@ -156,7 +156,7 @@ calculate_bands_power <- function(LFP, electrode_channel, un_primed_ind, hanning
     LFP_fftransformed <- fft(trial)
     
     # frequency bins
-    freq_resolution <- sampling_rate / length(LFP_hanning_windowed)
+    freq_resolution <- sampling_rate / length(LFP_fftransformed)
     freq_bins <- seq(0, nyquist_freq, by = freq_resolution)
     
     # calculate the power spectrum for the first half of the spectrum

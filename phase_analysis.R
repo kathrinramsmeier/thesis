@@ -38,6 +38,7 @@ freqband_filtering <- function(LFP_trial, frequency_bands, sampling_rate, filter
     
     # forward and reverse filtering (correction for phase distortion)
     LFP_freqband_filtered[, i] <- gsignal::filtfilt(filt = butterworth$b, a = butterworth$a, x = LFP_trial)
+    
   }
   
   return(LFP_freqband_filtered)

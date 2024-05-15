@@ -194,9 +194,6 @@ examine_autocorr(LFP_differenced) # better
 
 # remove frequencies around 60 Hz (= electrical line noise)
 line_noise <- 60
-
-# Nyquist frequency: maximum frequency that can be represented in the digital signal
-nyquist_freq <- sampling_rate / 2
 line_noise_norm <- line_noise / nyquist_freq
 
 notch_filter <- signal::fir1(
@@ -226,13 +223,6 @@ adf_result_notch - adf_result_baseline[channel] # more LFPs are now stationary
 
 # examining the autocorrelation function of some sample trials
 examine_autocorr(LFP_notch_filtered) # not much difference compared to baseline
-
-# # exclude the remaining few non-stationary trials
-# p_values <- rep(NA, nrow(LFP_notch_filtered))
-# for(i in 1:nrow(LFP_notch_filtered)) {
-#   p_values[i] <- tseries::adf.test(LFP_notch_filtered[, i])$p.value
-# }
-# LFP_notch_filtered <- LFP_notch_filtered[, which(p_values < 0.05)]
 
 # find the best filter order for each channel (first run transform_stationary() with notch_filtering = FALSE)
 find_best_filter_order <- function(LFP){
