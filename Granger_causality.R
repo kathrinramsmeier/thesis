@@ -1,22 +1,101 @@
 
 # VAR Model Creation ------------------------------------------------------
 
-# filter all primed and unprimed trials
-LFP_stationary_primed <- LFP_stationary_hra[, , primed_ind_hra]
-LFP_stationary_unprimed <- LFP_stationary_hra[, , unprimed_ind_hra]
-
-# look at the first primed trial as an example
-LFP_stationary_trial1 <- LFP_stationary_primed[, , 1]
+# look at a sample trial as an example
+LFP_stationary_trial1 <- LFP_stationary_hra[, , 333]
 LFP_stationary_trial1 <- t(LFP_stationary_trial1) 
 dim(LFP_stationary_trial1) # time, channel
 
 # select lag for VAR model using AIC
-select_lag <- VARselect(LFP_stationary_trial1, type = "const") 
+select_lag <- VARselect(LFP_stationary_trial1, type = "const", lag.max = 30) 
 select_lag$selection
 plot(select_lag$criteria[1, ])
 
 # create the VAR model
-VAR_model_trial1 <- VAR(LFP_stationary_trial1, type = "const", p = 4) # try with lower lag order because the model is to complex otherwise for that amount of observations
+VAR_model_trial1 <- vars::VAR(LFP_stationary_trial1, type = "const", p = 2) # try with lower lag order because the model is to complex otherwise for that "small" amount of observations compared to 15 variables
+residuals(VAR_model) # the model seems to overfit - the residuals are all very close to 0
+AIC(VAR_model_trial1) # model complex compared to the amount of information in the data 
+
+
+
+LFP_sample_trial <- do.call(cbind, LFP[[333]])
+dim(LFP_sample_trial) # time, channel
+
+# select lag for VAR model using AIC
+select_lag <- VARselect(LFP_sample_trial, type = "const") 
+select_lag$selection
+plot(select_lag$criteria[1, ])
+
+# create the VAR model
+VAR_model_sample_trial <- vars::VAR(LFP_sample_trial, type = "const", p = 2) # try with lower lag order because the model is to complex otherwise for that "small" amount of observations compared to 15 variables
+
+
+
+# Test Whether the VAR Model Adequately Captures the Correlation  ---------
+# Structure in the Data ---------------------------------------------------
+
+# from Seth et. al.
+
+# 1.) note the amount of variance accounted for by the VAR model in terms of the adjusted sum-square-error
+calculate_adj_sum_square_err <- function(VAR_model) {
+  
+  residuals <- residuals(VAR_model)
+  lags <- VAR_model_sample_trial$p
+  
+  # Calculate residual sum of squares for each variable
+  RSS <- apply(residuals, 1, function(x) sum(x^2))
+  
+  n_obs <- dim(VAR_model$y)[1]
+  n_var <- dim(VAR_model$y)[2]
+  
+  df_error <- (n_obs - lags) - (n_var * lags)
+  df_total <- (n_obs - lags)
+  
+  rss_adj <- numeric(n_var)
+  
+  for (i in 1:n_var) {
+    xvec <- VAR_model$y[(lags + 1):n_obs, i]
+    rss2 <- sum(xvec^2)
+    rss_adj[i] <- 1 - ((RSS[i] / df_error) / (rss2 / df_total))
+  }
+  
+  return(rss_adj)
+  
+}
+calculate_adj_sum_square_err(VAR_model = VAR_model_sample_trial) # values less then 0.3 signify that the VAR model may not have captured the data adequately
+
+# 2.) checking the VAR model's consistency (Code from the matlab GCCA toolbox converted into R)
+check_consistency <- function(VAR_model) {
+  
+  VAR_model_values <- VAR_model$datamat[, 1:15]
+  residuals <- residuals(VAR_model)
+  
+  predictions <- as.matrix(as.matrix(VAR_model_values) - as.matrix(residuals))
+  
+  VAR_model_values <- as.matrix(VAR_model_values)
+  
+  # covariance estimates
+  R_r <- VAR_model_values %*% t(VAR_model_values)  
+  R_s <- predictions %*% t(predictions)   
+  
+  # compare matrix norms
+  cons <- 1 - norm(R_s - R_r, type = "F") / norm(R_r, type = "F") 
+  return(cons)
+  
+}
+check_consistency(VAR_model = VAR_model_sample_trial) # values below 80% may give cause fo concern
+
+# 3.) Durbin-Watson statistic
+dW_VAR_test <- function(VAR_model) {
+  d <- rep(NA, 15)
+  for (i in 1:15) {
+    string <- paste0("VAR_model_sample_trial$varresult$y", i)
+    coeff <- eval(parse(text = string))
+    d[i] <- dwtest(coeff)$statistic
+  }
+  return(d)
+}
+dW_VAR_test(VAR_model = VAR_model_sample_trial) # if d < 1 there may be cause for concern
 
 
 
