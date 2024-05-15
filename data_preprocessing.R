@@ -141,7 +141,7 @@ data_preprocessing <- function(session_data, same_lengths) {
     # exclude about 10 ms before the reaction
     clip <- reaction_time_ind - 10
     time <- list()
-    LFP <- vector("list", length = dim(session_data$LFP)[1])
+    LFP <- vector("list", length = dim(session_data$LFP)[3])
     
     for (i in 1:dim(session_data$LFP)[3]) {
       
@@ -155,10 +155,10 @@ data_preprocessing <- function(session_data, same_lengths) {
       
       # loop over all channels
       for (j in 1:15) {
-        LFP[[j]][[i]] <- session_data$LFP[j, time_ind, i]
+        LFP[[i]][[j]] <- session_data$LFP[j, time_ind, i]
       }
     }
-    # LFP: channels, trials, time
+    # LFP: trials, channels, time
     
   }
 
@@ -197,6 +197,8 @@ unprimed_ind <- task$trial_number_count[!(task$block_trial_count %in% c(1, 2))]
 
 # sampling rate
 sampling_rate <- recordinginfo$data_sampling_rate_hz
+
+# Nyquist frequency: maximum frequency that can be represented in the digital signal
 nyquist_freq <- sampling_rate / 2
 
 # frequency bands
