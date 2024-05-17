@@ -12,22 +12,7 @@ select_lag$selection
 plot(select_lag$criteria[1, ])
 
 # create the VAR model
-VAR_model_trial1 <- vars::VAR(LFP_stationary_trial1, type = "const", p = 2) # try with lower lag order because the model is to complex otherwise for that "small" amount of observations compared to 15 variables
-residuals(VAR_model) # the model seems to overfit - the residuals are all very close to 0
-AIC(VAR_model_trial1) # model complex compared to the amount of information in the data 
-
-
-
-LFP_sample_trial <- do.call(cbind, LFP[[333]])
-dim(LFP_sample_trial) # time, channel
-
-# select lag for VAR model using AIC
-select_lag <- VARselect(LFP_sample_trial, type = "const") 
-select_lag$selection
-plot(select_lag$criteria[1, ])
-
-# create the VAR model
-VAR_model_sample_trial <- vars::VAR(LFP_sample_trial, type = "const", p = 2) # try with lower lag order because the model is to complex otherwise for that "small" amount of observations compared to 15 variables
+VAR_model_trial1 <- vars::VAR(LFP_stationary_trial1, type = "const", p = 1) # try with lower lag order because the model is to complex otherwise for that "small" amount of observations compared to 15 variables https://www.frontiersin.org/articles/10.3389/fncom.2013.00159/full#F2
 
 
 
@@ -40,7 +25,7 @@ VAR_model_sample_trial <- vars::VAR(LFP_sample_trial, type = "const", p = 2) # t
 calculate_adj_sum_square_err <- function(VAR_model) {
   
   residuals <- residuals(VAR_model)
-  lags <- VAR_model_sample_trial$p
+  lags <- VAR_model$p
   
   # Calculate residual sum of squares for each variable
   RSS <- apply(residuals, 1, function(x) sum(x^2))
@@ -62,7 +47,6 @@ calculate_adj_sum_square_err <- function(VAR_model) {
   return(rss_adj)
   
 }
-calculate_adj_sum_square_err(VAR_model = VAR_model_sample_trial) # values less then 0.3 signify that the VAR model may not have captured the data adequately
 
 # 2.) checking the VAR model's consistency (Code from the matlab GCCA toolbox converted into R)
 check_consistency <- function(VAR_model) {
@@ -83,19 +67,36 @@ check_consistency <- function(VAR_model) {
   return(cons)
   
 }
-check_consistency(VAR_model = VAR_model_sample_trial) # values below 80% may give cause fo concern
 
 # 3.) Durbin-Watson statistic
 dW_VAR_test <- function(VAR_model) {
   d <- rep(NA, 15)
   for (i in 1:15) {
-    string <- paste0("VAR_model_sample_trial$varresult$y", i)
+    string <- paste0("VAR_model$varresult$y", i)
     coeff <- eval(parse(text = string))
-    d[i] <- dwtest(coeff)$statistic
+    d[i] <- lmtest::dwtest(coeff)$statistic
   }
   return(d)
 }
-dW_VAR_test(VAR_model = VAR_model_sample_trial) # if d < 1 there may be cause for concern
+
+head(residuals(VAR_model_trial1)) # the model seems to overfit - the residuals are all very close to 0
+AIC(VAR_model_trial1) # model complex compared to the amount of information in the data 
+calculate_adj_sum_square_err(VAR_model = VAR_model_trial1) # values less then 0.3 signify that the VAR model may not have captured the data adequately
+check_consistency(VAR_model = VAR_model_trial1) # values below 80% may give cause fo concern
+dW_VAR_test(VAR_model = VAR_model_trial1) # if d < 1 there may be cause for concern
+
+
+
+# VAR Model With Elastic Net ----------------------------------------------
+
+temp <- zoo::zoo(LFP_stationary_trial1)
+
+# VAR model with Elastic Net
+VAR_model_trial1 <- ConnectednessApproach::ElasticNetVAR(
+  temp,
+  configuration = list(nlag = 1, nfolds = 10, loss = "mae", alpha = NULL, n_alpha = 10)
+)
+dim(VAR_model_trial1$B)
 
 
 
@@ -524,3 +525,215 @@ plot_layer_influences <- function(percentage_sign, un_primed) {
 }
 
 
+
+# GC Analysis on Windowed Data --------------------------------------------
+
+# Kamisnki et. al. (helps with non-stationarity)
+
+# (for unequal lengths, i.e., lists)
+
+library(MARSS)
+
+LFP_sample_trial <- do.call(cbind, LFP_stationary[[1]])
+dim(LFP_sample_trial) # time, channel
+
+window_size <- 50  # in milliseconds
+overlap <- 25  # overlap between consecutive windows (adjust as needed)
+
+# Function to extract windowed sections of the trial data
+extract_windows <- function(trial_data, window_size, overlap) {
+  
+  num_samples <- nrow(trial_data)
+  num_channels <- ncol(trial_data)
+  num_windows <- floor((num_samples - window_size) / overlap) + 1
+  
+  windowed_data <- array(NA, dim = c(window_size, num_channels, num_windows))
+  
+  for (i in 1:num_windows) {
+    start <- (i - 1) * overlap + 1
+    end <- start + window_size - 1
+    windowed_data[, , i] <- trial_data[start:end, ]
+  }
+  
+  return(windowed_data)
+}
+
+# extract windowed sections of the trial data
+windowed_data <- extract_windows(LFP_sample_trial, window_size, overlap)
+dim(windowed_data) # windowed signal, channel, number of windows
+
+# check stationarity (ratio of stationary windowed LFP signals)
+p_values <- matrix(nrow = dim(windowed_data)[2], ncol = dim(windowed_data)[3])
+for (i in 1:dim(windowed_data)[2]) {
+  for (j in 1:dim(windowed_data)[3]) {
+    p_values[i, j] <- tseries::adf.test(windowed_data[, i, j])$p.value
+  }
+}
+sum(p_values < 0.05) / length(p_values)
+
+# as comparison (stationarity before)
+p_values <- rep(NA, ncol(LFP_sample_trial))
+for (i in 1:ncol(LFP_sample_trial)) {
+  p_values[i] <- tseries::adf.test(LFP_sample_trial[i, ])$p.value
+}
+sum(p_values < 0.05) / length(p_values)
+
+# test: VAR models on one windowed section
+w1 <- windowed_data[, , 1]
+dim(w1) # (windowed) time, channel
+var_1 <- vars::VAR(w1, type = "const", p = 1)
+
+# checks
+head(residuals(var_1)) # the model seems to overfit - the residuals are all very close to 0
+AIC(var_1) # model complex compared to the amount of information in the data 
+calculate_adj_sum_square_err(VAR_model = var_1) # values less then 0.3 signify that the VAR model may not have captured the data adequately
+check_consistency(VAR_model = var_1) # values below 80% may give cause fo concern
+dW_VAR_test(VAR_model = var_1) # if d < 1 there may be cause for concern
+
+# Granger causality
+GC_1 <- (granger_causality(var_1))$result
+p_values_F <- round(GC_1$p.F[-(seq(from = 15, to = 225, by = 15))], 6)
+
+# Bonferroni correct p-values from F-Test and Chi^2-Test for multiple comparisons
+adj_p_values_F <- p.adjust(p_values_F, method = "bonferroni")
+
+# generate matrix of channel combinations
+combinations <- matrix(nrow = 15 * 15 - 15, ncol = 2)
+k <- 1
+for (i in 1:15) {
+  for (j in 1:15) {
+    if (i != j) {  # Exclude identical pairs
+      combinations[k, 1] <- i
+      combinations[k, 2] <- j
+      k <- k + 1
+    }
+  }
+}
+combinations <- combinations[, c(2, 1)]
+
+# extract significant GC combis
+sign_ind <- which(adj_p_values_F < 0.05)
+sign_causalities <- combinations[sign_ind, ]
+sign_causalities <- c(t(sign_causalities))
+
+
+
+### now for all windowed sections
+
+# generate matrix of channel combinations
+combinations <- matrix(nrow = 15 * 15 - 15, ncol = 2)
+k <- 1
+for (i in 1:15) {
+  for (j in 1:15) {
+    if (i != j) {  # Exclude identical pairs
+      combinations[k, 1] <- i
+      combinations[k, 2] <- j
+      k <- k + 1
+    }
+  }
+}
+combinations <- combinations[, c(2, 1)]
+
+sign_indicators <- matrix(nrow = nrow(combinations), ncol = dim(windowed_data)[3])
+
+# fit VAR models to the windowed data (Kamisnki et. al.)
+for (i in 1:dim(windowed_data)[3]) {
+  
+  # VAR model on windowed section
+  w_i <- windowed_data[, , i]
+  VAR_model_i <- vars::VAR(w_i, type = "const", p = 1)
+  
+  # Granger Causality
+  GC_sample_trial <- (granger_causality(VAR_model_i))$result
+  p_values_F <- round(GC_sample_trial$p.F[-(seq(from = 15, to = 225, by = 15))], 6)
+  
+  # Bonferroni correct p-values from F-Test and Chi^2-Test for multiple comparisons
+  adj_p_values_F <- p.adjust(p_values_F, method = "bonferroni")
+  
+  # extract significant GC combis
+  sign_indicator <- as.numeric(adj_p_values_F < 0.05)
+  
+  # add each indicator to combinations
+  sign_indicators[, i] <- sign_indicator
+  
+}
+
+# check whether all are significant
+all_sign <- rowSums(sign_indicators) == ncol(sign_indicators)
+combinations <- cbind(combinations, as.numeric(all_sign))
+
+
+
+### now for all trials
+
+# generate matrix of channel combinations
+combinations <- matrix(nrow = 15 * 15 - 15, ncol = 2)
+k <- 1
+for (i in 1:15) {
+  for (j in 1:15) {
+    if (i != j) {  # Exclude identical pairs
+      combinations[k, 1] <- i
+      combinations[k, 2] <- j
+      k <- k + 1
+    }
+  }
+}
+combinations <- combinations[, c(2, 1)]
+
+# loop over all trials
+for (k in 1:length(LFP_stationary)) {
+  
+  LFP_sample_trial <- do.call(cbind, LFP_stationary[[k]])
+  dim(LFP_sample_trial) # time, channel
+  
+  window_size <- 50  # in ms
+  overlap <- 25 
+  
+  # extract windowed sections of the trial data
+  windowed_data <- extract_windows(LFP_sample_trial, window_size, overlap)
+  dim(windowed_data) # windowed signal, channel, number of windows
+  
+  # check stationarity (ratio of stationary windowed LFP signals)
+  p_values <- matrix(nrow = dim(windowed_data)[2], ncol = dim(windowed_data)[3])
+  for (i in 1:dim(windowed_data)[2]) {
+    for (j in 1:dim(windowed_data)[3]) {
+      p_values[i, j] <- tseries::adf.test(windowed_data[, i, j])$p.value
+    }
+  }
+  print(paste("Ratio of stationary windowed signals in trial", k, sum(p_values < 0.05) / length(p_values)))
+  
+  sign_indicators <- matrix(nrow = nrow(combinations), ncol = dim(windowed_data)[3])
+  
+  # fit VAR models to the windowed data (Kamisnki et. al.)
+  for (i in 1:dim(windowed_data)[3]) {
+    
+    # VAR model on windowed section
+    w_i <- windowed_data[, , i]
+    VAR_model_i <- vars::VAR(w_i, type = "const", p = 1)
+    
+    # Granger Causality
+    GC_sample_trial <- (granger_causality(VAR_model_i))$result
+    p_values_F <- round(GC_sample_trial$p.F[-(seq(from = 15, to = 225, by = 15))], 6)
+    
+    # Bonferroni correct p-values from F-Test and Chi^2-Test for multiple comparisons
+    adj_p_values_F <- p.adjust(p_values_F, method = "bonferroni")
+    
+    # extract significant GC combis
+    sign_indicator <- as.numeric(adj_p_values_F < 0.05)
+    
+    # add each indicator to combinations
+    sign_indicators[, i] <- sign_indicator
+    
+  }
+  
+  # check whether all are significant
+  all_sign <- rowSums(sign_indicators) == ncol(sign_indicators)
+  combinations <- cbind(combinations, as.numeric(all_sign))
+  
+}
+
+# TO DO: 
+# * plot and analyse results
+# * put in a function
+# * do tests on the VAR models
+# * better display ratio of stationary windowed signals
