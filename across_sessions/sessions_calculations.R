@@ -1,94 +1,26 @@
 
-session <- "C190127"
-
-
-
-# Data Preprocessing ------------------------------------------------------
-
 # delete data from previous session to get storage space
 rm(list = c(
   "LFP", "probe", "time", "behaviour", "task", "recordinginfo", "probe",
   "LFP_stationary", "LFP_stationary_hra"
 ))
 
-session_data <- load_data(session = session)
-session_data <- data_preprocessing(session_data = session_data, same_lengths = FALSE)
+session <- "C190127"
+
+
+
+# Data Preprocessing ------------------------------------------------------
+
+session_data <- load_data(session = session) # if error do: detach("package:reticulate")
+session_data <- data_preprocessing(
+  session_data = session_data, 
+  same_lengths = FALSE,
+  ms_clipping = 10
+)
 
 # get the data sets out of the list into the global environment
 list2env(session_data, envir = .GlobalEnv)
 rm(list = "session_data")
-
-
-
-# Stationarity ------------------------------------------------------------
-
-# find best filter order for notch filter
-LFP_stationary <- transform_stationary(
-  LFP = LFP, 
-  detrending = TRUE, 
-  normalising = TRUE, 
-  ensemble_adjusting = TRUE, 
-  notch_filtering = FALSE,
-  notch_filter_order = notch_filter_order,
-  sampling_rate = sampling_rate,
-  print_remaining_non_stationary = TRUE,
-  hard_remove_all = FALSE
-)
-notch_filter_order <- find_best_filter_order(LFP = LFP_stationary)
-
-# save best filter orders
-setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/notch_filter_order")
-saveRDS(notch_filter_order, paste0(session, "_notch_filter_order.Rds"))
-
-# # load best filter orders
-# setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/notch_filter_order")
-# notch_filter_order <- readRDS(paste0(session, "_notch_filter_order.Rds"))
-
-LFP_stationary <- transform_stationary(
-  LFP = LFP, 
-  detrending = TRUE, 
-  normalising = TRUE, 
-  ensemble_adjusting = TRUE, 
-  notch_filtering = TRUE,
-  notch_filter_order = notch_filter_order,
-  sampling_rate = sampling_rate,
-  print_remaining_non_stationary = TRUE,
-  hard_remove_all = FALSE
-)
-LFP_stationary[1:3, 1:3, 1:3]
-
-LFP_stationary_hra <- transform_stationary(
-  LFP = LFP, 
-  detrending = TRUE, 
-  normalising = TRUE, 
-  ensemble_adjusting = TRUE, 
-  notch_filtering = TRUE,
-  notch_filter_order = notch_filter_order,
-  sampling_rate = sampling_rate,
-  print_remaining_non_stationary = FALSE,
-  hard_remove_all = TRUE
-)
-dim(LFP_stationary_hra)
-
-# filter all primed and unprimed trials (indices)
-primed_ind <- task$trial_number_count[task$block_trial_count %in% c(1, 2)]
-unprimed_ind <- task$trial_number_count[!(task$block_trial_count %in% c(1, 2))]
-
-# adapt unprimed and primed ind to removed trials
-unprimed_ind_hra <- unprimed_ind[which(unprimed_ind %in% c(1:dim(LFP_stationary_hra)[3]))]
-primed_ind_hra <- primed_ind[which(primed_ind %in% c(1:dim(LFP_stationary_hra)[3]))]
-length(unprimed_ind_hra)
-length(primed_ind_hra)
-
-# save stationary LFPs
-setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/stationarity")
-saveRDS(LFP_stationary, paste0(session, "_LFP_stationary.Rds"))
-saveRDS(LFP_stationary_hra, paste0(session, "_LFP_stationary_hra.Rds"))
-
-# load stationary LFPs
-setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/stationarity")
-LFP_stationary <- readRDS(paste0(session, "_LFP_stationary.Rds"))
-LFP_stationary_hra <- readRDS(paste0(session, "_LFP_stationary_hra.Rds"))
 
 # sampling rate
 sampling_rate <- recordinginfo$data_sampling_rate_hz
@@ -101,6 +33,91 @@ upper_channels <- probe$contact[probe$layer_category == "upper"]
 middle_channels <- probe$contact[probe$layer_category == "middle"]
 middle_channels[c(1, 3)] <- c(6, 8)
 deep_channels <- probe$contact[probe$layer_category == "deep"]
+
+# frequency bands
+# https://ncbi.nlm.nih.gov/pmc/articles/PMC3122299/#:~:text=Neural%20oscillations%20are%20electrical%20activities,gamma%20(%3E80%20Hz).
+frequency_bands <- list(
+  delta = c(0, 4),
+  theta = c(4, 8),
+  alpha = c(8, 12),
+  beta = c(12, 30),
+  low_gamma = c(30, 80),
+  high_gamma = c(80, 200)
+)
+
+
+
+# Stationarity ------------------------------------------------------------
+
+# check stationarity
+adf_result_baseline <- adf_stationarity_test(LFP = LFP)
+adf_result_baseline
+
+# find best filter order for notch filtering
+LFP_stationary <- transform_stationary(
+  LFP = LFP, 
+  detrending = TRUE, 
+  normalising = TRUE, 
+  ensemble_adjusting = FALSE, 
+  notch_filtering = FALSE,
+  notch_filter_order = notch_filter_order,
+  sampling_rate = sampling_rate,
+  print_remaining_non_stationary = FALSE
+)
+notch_filter_order <- find_best_filter_order(
+  LFP = LFP_stationary, 
+  max_filter_order = 20, 
+  nyquist_freq = nyquist_freq
+)
+
+# save best filter orders
+setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/notch_filter_order")
+saveRDS(notch_filter_order, paste0(session, "_notch_filter_order.Rds"))
+
+# # load best filter orders
+# setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/notch_filter_order")
+# notch_filter_order <- readRDS(paste0(session, "_notch_filter_order.Rds"))
+
+# detrending, normalising and notch filtering
+LFP_stationary <- transform_stationary(
+  LFP = LFP, 
+  detrending = TRUE, 
+  normalising = TRUE, 
+  ensemble_adjusting = FALSE, 
+  notch_filtering = TRUE,
+  notch_filter_order = notch_filter_order,
+  sampling_rate = sampling_rate,
+  print_remaining_non_stationary = FALSE
+)
+LFP_stationary[1:3, 1:3, 1:3]
+
+# check stationarity
+adf_result_notch_filtered <- adf_stationarity_test(LFP = LFP_stationary)
+adf_result_notch_filtered
+
+# remove remaining non-stationary trials (for GC analysis)
+LFP_stationary_hra <- exclude_remaining_non_stationary(LFP = LFP_stationary)
+length(LFP_stationary_hra)
+
+# filter all primed and unprimed trials (indices)
+primed_ind <- task$trial_number_count[task$block_trial_count %in% c(1, 2)]
+unprimed_ind <- task$trial_number_count[!(task$block_trial_count %in% c(1, 2))]
+
+# adapt unprimed and primed ind to removed trials
+unprimed_ind_hra <- unprimed_ind[which(unprimed_ind %in% c(1:length(LFP_stationary_hra)))]
+primed_ind_hra <- primed_ind[which(primed_ind %in% c(1:length(LFP_stationary_hra)))]
+length(unprimed_ind_hra)
+length(primed_ind_hra)
+
+# save stationary LFPs
+setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/stationarity")
+saveRDS(LFP_stationary, paste0(session, "_LFP_stationary.Rds"))
+saveRDS(LFP_stationary_hra, paste0(session, "_LFP_stationary_hra.Rds"))
+
+# load stationary LFPs
+setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/stationarity")
+LFP_stationary <- readRDS(paste0(session, "_LFP_stationary.Rds"))
+LFP_stationary_hra <- readRDS(paste0(session, "_LFP_stationary_hra.Rds"))
 
 
 
@@ -192,57 +209,83 @@ coherence_hat_primed <- calculate_avg_coherence(
 setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/coherence/primed")
 saveRDS(coherence_hat_primed, paste0(session, "_avg_coherence_primed.Rds"))
 
-# calculate PPC - PLV between the channels for all frequency bands for unprimed trials
-PPC_PLV_unprimed <- calculate_PPC(
+# calculate PLV between the channels for all frequency bands for unprimed trials
+PLV_unprimed <- calculate_PLV_PLI_PPC_hat(
   LFP = LFP_stationary,
   un_primed_ind = unprimed_ind,
   frequency_bands = frequency_bands,
   sampling_rate = sampling_rate, 
   filter_order = 2,
-  PLV_PLI = "PLV"
+  method = "PLV"
 )
 
-setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/PPC_PLV/unprimed")
-saveRDS(PPC_PLV_unprimed, paste0(session, "_PPC_PLV_unprimed_unprimed.Rds"))
+setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/PLV/unprimed")
+saveRDS(PLV_unprimed, paste0(session, "_PLV_unprimed_unprimed.Rds"))
 
-# calculate PPC - PLV between the channels for all frequency bands for primed trials
-PPC_PLV_primed <- calculate_PPC(
+# calculate PLV between the channels for all frequency bands for primed trials
+PLV_primed <- calculate_PLV_PLI_PPC_hat(
   LFP = LFP_stationary,
   un_primed_ind = primed_ind,
   frequency_bands = frequency_bands,
   sampling_rate = sampling_rate, 
   filter_order = 2,
-  PLV_PLI = "PLV"
+  method = "PLV"
 )
 
-setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/PPC_PLV/primed")
-saveRDS(PPC_PLV_primed, paste0(session, "_PPC_PLV_unprimed_primed.Rds"))
+setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/PLV/primed")
+saveRDS(PLV_primed, paste0(session, "_PLV_unprimed_primed.Rds"))
 
-# calculate PPC - PLI between the channels for all frequency bands for unprimed trials
-PPC_PLI_unprimed <- calculate_PPC(
+# calculate PLI between the channels for all frequency bands for unprimed trials
+PLI_unprimed <- calculate_PLV_PLI_PPC_hat(
   LFP = LFP_stationary,
   un_primed_ind = unprimed_ind,
   frequency_bands = frequency_bands,
   sampling_rate = sampling_rate, 
   filter_order = 2,
-  PLV_PLI = "PLI"
+  method = "PLI"
 )
 
-setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/PPC_PLI/unprimed")
-saveRDS(PPC_PLI_unprimed, paste0(session, "_PPC_PLI_unprimed_unprimed.Rds"))
+setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/PLI/unprimed")
+saveRDS(PLI_unprimed, paste0(session, "_PLI_unprimed_unprimed.Rds"))
 
-# calculate PPC - PLI between the channels for all frequency bands for primed trials
-PPC_PLI_primed <- calculate_PPC(
+# calculate PLI between the channels for all frequency bands for primed trials
+PLI_primed <- calculate_PLV_PLI_PPC_hat(
   LFP = LFP_stationary,
   un_primed_ind = primed_ind,
   frequency_bands = frequency_bands,
   sampling_rate = sampling_rate, 
   filter_order = 2,
-  PLV_PLI = "PLI"
+  method = "PLI"
 )
 
-setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/PPC_PLI/primed")
-saveRDS(PPC_PLI_primed, paste0(session, "_PPC_PLI_unprimed_primed.Rds"))
+setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/PLI/primed")
+saveRDS(PLI_primed, paste0(session, "_PLI_unprimed_primed.Rds"))
+
+# calculate PPC between the channels for all frequency bands for unprimed trials
+PPC_unprimed <- calculate_PLV_PLI_PPC_hat(
+  LFP = LFP_stationary,
+  un_primed_ind = unprimed_ind,
+  frequency_bands = frequency_bands,
+  sampling_rate = sampling_rate, 
+  filter_order = 2,
+  method = "PPC"
+)
+
+setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/PPC/unprimed")
+saveRDS(PPC_unprimed, paste0(session, "_PPC_unprimed_unprimed.Rds"))
+
+# calculate PPC between the channels for all frequency bands for primed trials
+PPC_primed <- calculate_PLV_PLI_PPC_hat(
+  LFP = LFP_stationary,
+  un_primed_ind = primed_ind,
+  frequency_bands = frequency_bands,
+  sampling_rate = sampling_rate, 
+  filter_order = 2,
+  method = "PPC"
+)
+
+setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/PPC/primed")
+saveRDS(PPC_primed, paste0(session, "_PPC_unprimed_primed.Rds"))
 
 
 
@@ -251,7 +294,7 @@ saveRDS(PPC_PLI_primed, paste0(session, "_PPC_PLI_unprimed_primed.Rds"))
 GC_p_values_unprimed <- calculate_GC_p_values(
   LFP = LFP_stationary_hra,
   un_primed_ind = unprimed_ind_hra,
-  lag_order = 5
+  lag_order = 1
 )
 
 # check

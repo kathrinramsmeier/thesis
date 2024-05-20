@@ -92,7 +92,7 @@ session_data$probe # layer 1:5 = upper, 6:10 = middle, 11:15 = deep
 
 # Data Preprocessing ------------------------------------------------------
 
-data_preprocessing <- function(session_data, same_lengths) {
+data_preprocessing <- function(session_data, same_lengths, ms_clipping) {
   
   # add time value at the start and at the end
   session_data$time <- c(
@@ -110,23 +110,25 @@ data_preprocessing <- function(session_data, same_lengths) {
   session_data$task$trial_number_count <- 1:nrow(session_data$task)
   session_data$behaviour <- session_data$behaviour[trials_ind, ]
   
+  # exclude about ms_clipping ms before the reaction
+  clipped_reaction <- session_data$behaviour$reaction_time_ms - ms_clipping
+  
   # for clipping: get the ind in the time vector that is closest to the reaction time
-  reaction_time_ind <- rep(NA, dim(session_data$LFP)[3])
+  clipped_reaction_time_ind <- rep(NA, dim(session_data$LFP)[3])
   for (i in 1:dim(session_data$LFP)[3]) {
-    reaction_time_ind[i] <- which.min(abs(session_data$time - session_data$behaviour$reaction_time_ms[i]))
+    clipped_reaction_time_ind[i] <- which.min(abs(session_data$time - clipped_reaction[i]))
   }
   
   if (same_lengths) {
     
-    # exclude about 10 ms before the reaction
-    clip <- reaction_time_ind - 10
-    time_ind <- 1:min(clip)
+    # # get the times from start to the clipped reaction time and pad LFP signals to the same lengths
+    time_ind <- 1:min(clipped_reaction_time_ind)
     time_i <- session_data$time[time_ind]
     
     # only keep LFP after stimulus onset
     time_ind <- which(time_i > 0)
     
-    # only keep the LFP after stimulus onset up to the minimum of 10 ms before reaction times
+    # now filter the LFP
     time <- matrix(nrow = dim(session_data$LFP)[3], ncol = length(time_ind))
     LFP <- array(dim = c(dim(session_data$LFP)[1], length(time_ind), dim(session_data$LFP)[3]))
     for (i in 1:dim(session_data$LFP)[3]) {
@@ -138,15 +140,13 @@ data_preprocessing <- function(session_data, same_lengths) {
     
   } else {
     
-    # exclude about 10 ms before the reaction
-    clip <- reaction_time_ind - 10
     time <- list()
     LFP <- vector("list", length = dim(session_data$LFP)[3])
     
     for (i in 1:dim(session_data$LFP)[3]) {
       
-      # exclude about 10 ms before the reaction
-      time_ind <- 1:clip[i]
+      # get the times from start to the clipped reaction time for each trial
+      time_ind <- 1:clipped_reaction_time_ind[i]
       time_i <- session_data$time[time_ind]
       
       # only keep LFP after stimulus onset
@@ -181,7 +181,11 @@ data_preprocessing <- function(session_data, same_lengths) {
   
 }
 
-session_data <- data_preprocessing(session_data = session_data, same_lengths = TRUE)
+session_data <- data_preprocessing(
+  session_data = session_data, 
+  same_lengths = TRUE,
+  ms_clipping = 10
+)
 
 # get the data sets out of the list into the global environment
 list2env(session_data, envir = .GlobalEnv)

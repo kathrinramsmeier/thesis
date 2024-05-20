@@ -2,17 +2,27 @@
 # VAR Model Creation ------------------------------------------------------
 
 # look at a sample trial as an example
-LFP_stationary_trial1 <- LFP_stationary_hra[, , 333]
-LFP_stationary_trial1 <- t(LFP_stationary_trial1) 
-dim(LFP_stationary_trial1) # time, channel
+# LFP_sample_trial <- LFP_stationary_hra[, , 333]
+# LFP_sample_trial <- t(LFP_sample_trial) 
+# dim(LFP_sample_trial) # time, channel
+LFP_sample_trial <- LFP_stationary[[333]]
+LFP_sample_trial <- do.call(cbind, lapply(LFP_sample_trial, function(x) as.numeric(x)))
+dim(LFP_sample_trial) # time, channel
+
+# stationarity check
+p_values <- rep(NA, ncol(LFP_sample_trial))
+for (i in 1:ncol(LFP_sample_trial)) {
+  p_values[i] <- tseries::adf.test(LFP_sample_trial[, i])$p.value
+}
+sum(p_values < 0.05) / length(p_values)
 
 # select lag for VAR model using AIC
-select_lag <- VARselect(LFP_stationary_trial1, type = "const", lag.max = 30) 
+select_lag <- VARselect(LFP_sample_trial, type = "const", lag.max = 30) 
 select_lag$selection
 plot(select_lag$criteria[1, ])
 
 # create the VAR model
-VAR_model_trial1 <- vars::VAR(LFP_stationary_trial1, type = "const", p = 1) # try with lower lag order because the model is to complex otherwise for that "small" amount of observations compared to 15 variables https://www.frontiersin.org/articles/10.3389/fncom.2013.00159/full#F2
+VAR_model_sample_trial <- vars::VAR(LFP_sample_trial, type = "const", p = 1) # try with lower lag order because the model is to complex otherwise for that "small" amount of observations compared to 15 variables https://www.frontiersin.org/articles/10.3389/fncom.2013.00159/full#F2
 
 
 
@@ -79,24 +89,24 @@ dW_VAR_test <- function(VAR_model) {
   return(d)
 }
 
-head(residuals(VAR_model_trial1)) # the model seems to overfit - the residuals are all very close to 0
-AIC(VAR_model_trial1) # model complex compared to the amount of information in the data 
-calculate_adj_sum_square_err(VAR_model = VAR_model_trial1) # values less then 0.3 signify that the VAR model may not have captured the data adequately
-check_consistency(VAR_model = VAR_model_trial1) # values below 80% may give cause fo concern
-dW_VAR_test(VAR_model = VAR_model_trial1) # if d < 1 there may be cause for concern
+head(residuals(VAR_model_sample_trial))
+AIC(VAR_model_sample_trial)
+calculate_adj_sum_square_err(VAR_model = VAR_model_sample_trial) # values less then 0.3 signify that the VAR model may not have captured the data adequately
+check_consistency(VAR_model = VAR_model_sample_trial) # values below 80% may give cause fo concern
+dW_VAR_test(VAR_model = VAR_model_sample_trial) # if d < 1 there may be cause for concern
 
 
 
 # VAR Model With Elastic Net ----------------------------------------------
 
-temp <- zoo::zoo(LFP_stationary_trial1)
-
-# VAR model with Elastic Net
-VAR_model_trial1 <- ConnectednessApproach::ElasticNetVAR(
-  temp,
-  configuration = list(nlag = 1, nfolds = 10, loss = "mae", alpha = NULL, n_alpha = 10)
-)
-dim(VAR_model_trial1$B)
+# temp <- zoo::zoo(LFP_sample_trial)
+# 
+# # VAR model with Elastic Net
+# VAR_model_trial1 <- ConnectednessApproach::ElasticNetVAR(
+#   temp,
+#   configuration = list(nlag = 1, nfolds = 10, loss = "mae", alpha = NULL, n_alpha = 10)
+# )
+# dim(VAR_model_trial1$B)
 
 
 
@@ -104,7 +114,7 @@ dim(VAR_model_trial1$B)
 
 # H0: time series X does not cause time series Y to Granger-cause itself
 
-GC <- granger_causality(VAR_model_trial1)
+GC <- granger_causality(VAR_model_sample_trial)
 GC_trial1 <- GC$result
 
 # generate matrix of channel combinations
@@ -212,7 +222,58 @@ legend(
 
 # GC Analysis for All Trials ----------------------------------------------
 
+# GC_analysis <- function(LFP, lag_order) {
+#   
+#   # prepare matrix for results
+#   combinations <- matrix(nrow = 15 * 15 - 15, ncol = 2)
+#   k <- 1
+#   for (i in 1:15) {
+#     for (j in 1:15) {
+#       # exclude identical pairs
+#       if (i != j) {
+#         combinations[k, 1] <- i
+#         combinations[k, 2] <- j
+#         k <- k + 1
+#       }
+#     }
+#   }
+#   combinations <- combinations[, c(2, 1)]
+#   p_values_trials <- matrix(nrow = 15 * 15 - 15, ncol = dim(LFP)[3])
+#   GC_p_values <- cbind(combinations, p_values_trials)
+#   colnames(GC_p_values) <- c("influencing_ch", "influenced_ch", paste0("trial_", 1:dim(LFP)[3], "_p_value"))
+#   
+#   # loop over all trials
+#   for (i in 1:dim(LFP)[3]) {
+#     
+#     LFP_trial_i <- LFP[, , i]
+#     LFP_trial_i <- t(LFP_trial_i) 
+#     
+#     # VAR model creation (using AIC to determine the lag order)
+#     VAR_model_trial_i <- VAR(LFP_trial_i, type = "const", p = lag_order)
+#     
+#     # Granger causality
+#     GC <- granger_causality(VAR_model_trial_i)
+#     GC_trial_i <- GC$result
+#     
+#     # extract p-values from F-Test
+#     p_values_F <- round(GC_trial_i$p.F[-(seq(from = 15, to = 225, by = 15))], 6)
+#     
+#     # Bonferroni adjust the p values
+#     adj_p_values_F <- p.adjust(p_values_F, method = "bonferroni")
+#     
+#     GC_p_values[, i + 2] <- adj_p_values_F
+#     
+#     print(paste("GC calculation of trial", i, "of", dim(LFP)[3], "succeeded."))
+#     
+#   }
+#   
+#   return(GC_p_values)
+#   
+# }
+
 GC_analysis <- function(LFP, lag_order) {
+  
+  num_trials <- length(LFP)
   
   # prepare matrix for results
   combinations <- matrix(nrow = 15 * 15 - 15, ncol = 2)
@@ -228,17 +289,17 @@ GC_analysis <- function(LFP, lag_order) {
     }
   }
   combinations <- combinations[, c(2, 1)]
-  p_values_trials <- matrix(nrow = 15 * 15 - 15, ncol = dim(LFP)[3])
+  p_values_trials <- matrix(nrow = 15 * 15 - 15, ncol = num_trials)
   GC_p_values <- cbind(combinations, p_values_trials)
-  colnames(GC_p_values) <- c("influencing_ch", "influenced_ch", paste0("trial_", 1:dim(LFP)[3], "_p_value"))
-  
-  # loop over all trials
-  for (i in 1: dim(LFP)[3]) {
+  colnames(GC_p_values) <- c("influencing_ch", "influenced_ch", paste0("trial_", 1:num_trials, "_p_value"))
+
+  for (i in 1:num_trials) {
     
-    LFP_trial_i <- LFP[, , i]
-    LFP_trial_i <- t(LFP_trial_i) 
+    # extract trial i and transform into a matrix
+    LFP_trial_i <- LFP[[i]]
+    LFP_trial_i <- do.call(cbind, lapply(LFP_trial_i, function(x) as.numeric(x)))
     
-    # VAR model creation (using AIC to determine the lag order)
+    # VAR model creation
     VAR_model_trial_i <- VAR(LFP_trial_i, type = "const", p = lag_order)
     
     # Granger causality
@@ -253,7 +314,7 @@ GC_analysis <- function(LFP, lag_order) {
     
     GC_p_values[, i + 2] <- adj_p_values_F
     
-    print(paste("GC calculation of trial", i, "of", dim(LFP)[3], "succeeded."))
+    print(paste("GC calculation of trial", i, "of", num_trials, "succeeded."))
     
   }
   
@@ -268,12 +329,12 @@ subset_trials_unprimed_ind <- sort(sample(unprimed_ind_hra, num_samples / 2))
 subset_trials_primed_ind <- sort(sample(primed_ind_hra, num_samples / 2))
 subset_trials_ind <- sort(c(subset_trials_unprimed_ind, subset_trials_primed_ind))
 start_time <- Sys.time()
-GC_p_values <- GC_analysis(LFP = LFP_stationary_hra[, , subset_trials_ind], type = "const", lag_order = 3)
+GC_p_values <- GC_analysis(LFP = LFP_stationary_hra[subset_trials_ind], lag_order = 1)
 end_time <- Sys.time()
 end_time - start_time
 
-# estimation of time to run all
-((end_time - start_time) / num_samples * dim(LFP_stationary_hra)[3]) / 60
+# estimation of time to run all (time in h)
+((end_time - start_time) / num_samples * length(LFP_stationary_hra)) / 60 / 60 
 
 # divide in primed and unprimed trials
 subset_unprimed_ind <- which(subset_trials_ind %in% unprimed_ind_hra)
@@ -311,10 +372,22 @@ percentage_sign <- cbind(GC_p_values_unprimed[, 1:2], percentage_sign_primed, pe
 #   
 # }
 
+# calculate_GC_p_values <- function(LFP, un_primed_ind, lag_order) {
+#   
+#   # filter either primed or unprimed trials
+#   LFP_trials <- LFP[, , un_primed_ind]
+#   
+#   # GC analysis
+#   GC_p_values <- GC_analysis(LFP = LFP_trials, lag_order = lag_order)
+#   
+#   return(GC_p_values)
+#   
+# }
+
 calculate_GC_p_values <- function(LFP, un_primed_ind, lag_order) {
   
   # filter either primed or unprimed trials
-  LFP_trials <- LFP[, , un_primed_ind]
+  LFP_trials <- LFP[un_primed_ind]
   
   # GC analysis
   GC_p_values <- GC_analysis(LFP = LFP_trials, lag_order = lag_order)
@@ -540,7 +613,7 @@ dim(LFP_sample_trial) # time, channel
 window_size <- 50  # in milliseconds
 overlap <- 25  # overlap between consecutive windows (adjust as needed)
 
-# Function to extract windowed sections of the trial data
+# extract windowed sections of the trial data
 extract_windows <- function(trial_data, window_size, overlap) {
   
   num_samples <- nrow(trial_data)
@@ -680,55 +753,59 @@ for (i in 1:15) {
 }
 combinations <- combinations[, c(2, 1)]
 
+stationarity_ratio <- rep(NA, length(LFP_stationary))
+
+window_size <- 50  # in ms
+overlap <- 25 
+
 # loop over all trials
 for (k in 1:length(LFP_stationary)) {
   
   LFP_sample_trial <- do.call(cbind, LFP_stationary[[k]])
-  dim(LFP_sample_trial) # time, channel
-  
-  window_size <- 50  # in ms
-  overlap <- 25 
+  # dim(LFP_sample_trial) # time, channel
   
   # extract windowed sections of the trial data
   windowed_data <- extract_windows(LFP_sample_trial, window_size, overlap)
-  dim(windowed_data) # windowed signal, channel, number of windows
+  # dim(windowed_data) # windowed signal, channel, number of windows
   
-  # check stationarity (ratio of stationary windowed LFP signals)
-  p_values <- matrix(nrow = dim(windowed_data)[2], ncol = dim(windowed_data)[3])
-  for (i in 1:dim(windowed_data)[2]) {
-    for (j in 1:dim(windowed_data)[3]) {
-      p_values[i, j] <- tseries::adf.test(windowed_data[, i, j])$p.value
-    }
-  }
-  print(paste("Ratio of stationary windowed signals in trial", k, sum(p_values < 0.05) / length(p_values)))
+  # # check stationarity (ratio of stationary windowed LFP signals)
+  # p_values <- matrix(nrow = dim(windowed_data)[2], ncol = dim(windowed_data)[3])
+  # for (i in 1:dim(windowed_data)[2]) {
+  #   for (j in 1:dim(windowed_data)[3]) {
+  #     p_values[i, j] <- tseries::adf.test(windowed_data[, i, j])$p.value
+  #   }
+  # }
+  # stationarity_ratio[k] <- sum(p_values < 0.05) / length(p_values)
   
   sign_indicators <- matrix(nrow = nrow(combinations), ncol = dim(windowed_data)[3])
-  
+
   # fit VAR models to the windowed data (Kamisnki et. al.)
   for (i in 1:dim(windowed_data)[3]) {
-    
+
     # VAR model on windowed section
     w_i <- windowed_data[, , i]
     VAR_model_i <- vars::VAR(w_i, type = "const", p = 1)
-    
+
     # Granger Causality
     GC_sample_trial <- (granger_causality(VAR_model_i))$result
     p_values_F <- round(GC_sample_trial$p.F[-(seq(from = 15, to = 225, by = 15))], 6)
-    
+
     # Bonferroni correct p-values from F-Test and Chi^2-Test for multiple comparisons
     adj_p_values_F <- p.adjust(p_values_F, method = "bonferroni")
-    
+
     # extract significant GC combis
     sign_indicator <- as.numeric(adj_p_values_F < 0.05)
-    
+
     # add each indicator to combinations
     sign_indicators[, i] <- sign_indicator
-    
+
   }
-  
+
   # check whether all are significant
   all_sign <- rowSums(sign_indicators) == ncol(sign_indicators)
   combinations <- cbind(combinations, as.numeric(all_sign))
+
+  # # print(paste("Trial", k, "of", length(LFP_stationary)), "trials completed.")
   
 }
 
