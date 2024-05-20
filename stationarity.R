@@ -18,19 +18,18 @@ adf_stationarity_test <- function(LFP, channel) {
     
     p_values <- matrix(NA, nrow = num_trials, ncol = num_channels)
     colnames(p_values) <- paste0("Channel_", 1:num_channels)
-    
-    # loop over all channels
+
     for (j in 1:num_channels) {
-      
-      # loop over all trials
       for (i in 1:num_trials) {
         p_values[i, j] <- tseries::adf.test(LFP[[i]][[j]])$p.value
       }
-      
     }
     
-    # percentage of LFPs that are stationary
-    percentage_stationary <- colSums(p_values < 0.05) / nrow(p_values)
+    # # ratio of LFPs that are stationary in each channel
+    # percentage_stationary <- colSums(p_values < 0.05) / num_trials
+    
+    # ratio of LFPs that are stationary
+    percentage_stationary <- sum(p_values < 0.05) / (num_channels * num_trials)
     
   # for the case that LFP was cut equally
   } else {
@@ -94,7 +93,6 @@ adf_stationarity_test <- function(LFP, channel) {
 
 # percentage of LFPs that are stationary
 adf_result_baseline <- adf_stationarity_test(LFP = LFP, channel = "all") # use for the case that LFP was cut equally
-adf_result_baseline <- adf_stationarity_test(LFP = LFP) # use for the case that LFP was not cut equally
 adf_result_baseline # most are stationary - but can be better in some channels
 
 # Kwiatkowski-Phillips-Schmidt-Shin test - H0: stationary
@@ -300,156 +298,160 @@ saveRDS(adf_result_notch, paste0(session, "_notch_filter_order.Rds"))
 
 # Stationarity Transformation on the Whole LFP ----------------------------
 
-transform_stationary <- function(
-    LFP,
-    detrending,
-    normalising,
-    ensemble_adjusting,
-    notch_filtering,
-    notch_filter_order,
-    sampling_rate,
-    print_remaining_non_stationary,
-    hard_remove_all
-    ) {
-  
-  # prepare matrix for the transformed LFPs
-  LFP_stationary <- array(dim = c(dim(LFP)[2], dim(LFP)[3]))
-  
-  # loop over all channels
-  for(i in 1:dim(LFP)[1]) {
-    
-    # extract the LFP from channel i
-    LFP_channel_i <- LFP[i, , ]
-    
-    # removing linear trends
-    if (detrending) {
-      LFP_channel_i <- pracma::detrend(LFP_channel_i, tt = "linear")
-    }
-    
-    # removal of temporal mean and division of temporal sd
-    if (normalising) {
-      LFP_channel_i <- LFP_channel_i - colMeans(LFP_channel_i)
-      LFP_channel_i <- t(LFP_channel_i) / sd(t(LFP_channel_i))
-      LFP_channel_i <- t(LFP_channel_i)
-    }
-    
-    # ensemble mean removal and division of ensemble sd
-    if (ensemble_adjusting) {
-      LFP_channel_i <- LFP_channel_i - rowMeans(LFP_channel_i)
-      LFP_channel_i <- LFP_channel_i / sd(LFP_channel_i)
-    }
-    
-    # notch filtering each LFP trial
-    if (notch_filtering) {
-      
-      # remove frequencies around 60 Hz (= electrical line noise)
-      line_noise <- 60
-      nyquist_freq <- sampling_rate / 2
-      line_noise_norm <- line_noise / nyquist_freq
-      
-      notch_filter <- signal::fir1(
-        # filter order - higher -> filters with sharper frequency responses, better attenuation, more computation; lower -> smoother frequency responses, may not achieve as much attenuation
-        n = notch_filter_order[i], 
-        # band edges
-        w = line_noise_norm,
-        # notch filter
-        type = "stop"
-      )
-      
-      # notch filtering each LFP trial
-      LFP_channel_i_filtered <- array(dim = dim(LFP_channel_i))
-      for(j in 1:ncol(LFP_channel_i_filtered)) {
-        LFP_channel_i_filtered[, j] <- signal::filter(filt = notch_filter, x = LFP_channel_i[, j])
-      }
-      LFP_channel_i <- LFP_channel_i_filtered
-      
-    }
-    
-    if (print_remaining_non_stationary) {
-      # display the number of remaining non-stationary LFPs
-      p_values <- rep(NA, ncol(LFP_channel_i))
-      for (j in 1:ncol(LFP_channel_i)) {
-        p_values[j] <- tseries::adf.test(LFP_channel_i[, j])$p.value
-      }
-      print(paste0("Channel ", i, ": Number of LFP trials still non-stationary (before removing all): ", sum(p_values > 0.05)))
-    }
-    
-    LFP_stationary <- abind::abind(LFP_stationary, LFP_channel_i, along = 3)
-    
-  }
-  
-  LFP_stationary <- LFP_stationary[, , 2:(dim(LFP)[1] + 1)]
-  LFP_stationary <- aperm(LFP_stationary, c(3, 1, 2))
-  
-  # exclude the remaining few non-stationary trials
-  if (hard_remove_all) {
-    
-    p_values <- matrix(NA, nrow = dim(LFP_stationary)[3], ncol = dim(LFP_stationary)[1])
-    
-    # loop over all channels
-    for (j in 1:dim(LFP_stationary)[1]) {
-      
-      # loop over all trials
-      for (i in 1:dim(LFP_stationary)[3]) {
-        p_values[i, j] <- tseries::adf.test(LFP_stationary[j, , i])$p.value
-      }
-      
-    }
-    
-    all_channels_stationary <- rep(NA, nrow(p_values))
-    for (j in 1:nrow(p_values)) {
-      
-      # check if trials in all channels are stationary
-      all_channels_stationary[j] <- all(p_values[j, ] < 0.05)
-      stationary_ind <- which(all_channels_stationary)
-      
-    }
-    
-    # filter the stationary trials
-    LFP_stationary <- LFP_stationary[, , stationary_ind]
-    
-  }
-  
-  return(LFP_stationary)
-  
-}
+# transform_stationary <- function(
+#     LFP,
+#     detrending,
+#     normalising,
+#     ensemble_adjusting,
+#     notch_filtering,
+#     notch_filter_order,
+#     sampling_rate,
+#     print_remaining_non_stationary,
+#     hard_remove_all
+#     ) {
+#   
+#   # prepare matrix for the transformed LFPs
+#   LFP_stationary <- array(dim = c(dim(LFP)[2], dim(LFP)[3]))
+#   
+#   # loop over all channels
+#   for(i in 1:dim(LFP)[1]) {
+#     
+#     # extract the LFP from channel i
+#     LFP_channel_i <- LFP[i, , ]
+#     
+#     # removing linear trends
+#     if (detrending) {
+#       LFP_channel_i <- pracma::detrend(LFP_channel_i, tt = "linear")
+#     }
+#     
+#     # removal of temporal mean and division of temporal sd
+#     if (normalising) {
+#       LFP_channel_i <- LFP_channel_i - colMeans(LFP_channel_i)
+#       LFP_channel_i <- t(LFP_channel_i) / sd(t(LFP_channel_i))
+#       LFP_channel_i <- t(LFP_channel_i)
+#     }
+#     
+#     # ensemble mean removal and division of ensemble sd
+#     if (ensemble_adjusting) {
+#       LFP_channel_i <- LFP_channel_i - rowMeans(LFP_channel_i)
+#       LFP_channel_i <- LFP_channel_i / sd(LFP_channel_i)
+#     }
+#     
+#     # notch filtering each LFP trial
+#     if (notch_filtering) {
+#       
+#       # remove frequencies around 60 Hz (= electrical line noise)
+#       line_noise <- 60
+#       nyquist_freq <- sampling_rate / 2
+#       line_noise_norm <- line_noise / nyquist_freq
+#       
+#       notch_filter <- signal::fir1(
+#         # filter order - higher -> filters with sharper frequency responses, better attenuation, more computation; lower -> smoother frequency responses, may not achieve as much attenuation
+#         n = notch_filter_order[i], 
+#         # band edges
+#         w = line_noise_norm,
+#         # notch filter
+#         type = "stop"
+#       )
+#       
+#       # notch filtering each LFP trial
+#       LFP_channel_i_filtered <- array(dim = dim(LFP_channel_i))
+#       for(j in 1:ncol(LFP_channel_i_filtered)) {
+#         LFP_channel_i_filtered[, j] <- signal::filter(filt = notch_filter, x = LFP_channel_i[, j])
+#       }
+#       LFP_channel_i <- LFP_channel_i_filtered
+#       
+#     }
+#     
+#     if (print_remaining_non_stationary) {
+#       # display the number of remaining non-stationary LFPs
+#       p_values <- rep(NA, ncol(LFP_channel_i))
+#       for (j in 1:ncol(LFP_channel_i)) {
+#         p_values[j] <- tseries::adf.test(LFP_channel_i[, j])$p.value
+#       }
+#       print(paste0("Channel ", i, ": Number of LFP trials still non-stationary (before removing all): ", sum(p_values > 0.05)))
+#     }
+#     
+#     LFP_stationary <- abind::abind(LFP_stationary, LFP_channel_i, along = 3)
+#     
+#   }
+#   
+#   LFP_stationary <- LFP_stationary[, , 2:(dim(LFP)[1] + 1)]
+#   LFP_stationary <- aperm(LFP_stationary, c(3, 1, 2))
+#   
+#   # exclude the remaining few non-stationary trials
+#   if (hard_remove_all) {
+#     
+#     p_values <- matrix(NA, nrow = dim(LFP_stationary)[3], ncol = dim(LFP_stationary)[1])
+#     
+#     # loop over all channels
+#     for (j in 1:dim(LFP_stationary)[1]) {
+#       
+#       # loop over all trials
+#       for (i in 1:dim(LFP_stationary)[3]) {
+#         p_values[i, j] <- tseries::adf.test(LFP_stationary[j, , i])$p.value
+#       }
+#       
+#     }
+#     
+#     all_channels_stationary <- rep(NA, nrow(p_values))
+#     for (j in 1:nrow(p_values)) {
+#       
+#       # check if trials in all channels are stationary
+#       all_channels_stationary[j] <- all(p_values[j, ] < 0.05)
+#       stationary_ind <- which(all_channels_stationary)
+#       
+#     }
+#     
+#     # filter the stationary trials
+#     LFP_stationary <- LFP_stationary[, , stationary_ind]
+#     
+#   }
+#   
+#   return(LFP_stationary)
+#   
+# }
+# 
+# setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/notch_filter_order")
+# notch_filter_order <- readRDS(paste0(session, "_notch_filter_order.Rds"))
+# 
+# LFP_stationary <- transform_stationary(
+#   LFP = LFP, 
+#   detrending = TRUE, 
+#   normalising = TRUE, 
+#   ensemble_adjusting = TRUE, # does this make sense when the trial times are not equal?
+#   notch_filtering = TRUE,
+#   notch_filter_order = notch_filter_order,
+#   sampling_rate = sampling_rate,
+#   print_remaining_non_stationary = FALSE,
+#   hard_remove_all = FALSE
+# )
+# 
+# LFP_stationary[1:3, 1:3, 1:3]
+# 
+# LFP_stationary_hra <- transform_stationary(
+#   LFP = LFP, 
+#   detrending = TRUE, 
+#   normalising = TRUE, 
+#   ensemble_adjusting = TRUE, 
+#   notch_filtering = TRUE,
+#   notch_filter_order = notch_filter_order,
+#   sampling_rate = sampling_rate,
+#   print_remaining_non_stationary = FALSE,
+#   hard_remove_all = TRUE
+# )
+# 
+# dim(LFP_stationary_hra)
+# 
+# # adapt unprimed and primed ind to removed trials
+# unprimed_ind_hra <- unprimed_ind[which(unprimed_ind %in% c(1:dim(LFP_stationary_hra)[3]))]
+# primed_ind_hra <- primed_ind[which(primed_ind %in% c(1:dim(LFP_stationary_hra)[3]))]
+# length(unprimed_ind_hra)
+# length(primed_ind_hra)
 
-setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/notch_filter_order")
-notch_filter_order <- readRDS(paste0(session, "_notch_filter_order.Rds"))
 
-LFP_stationary <- transform_stationary(
-  LFP = LFP, 
-  detrending = TRUE, 
-  normalising = TRUE, 
-  ensemble_adjusting = TRUE, # does this make sense when the trial times are not equal?
-  notch_filtering = TRUE,
-  notch_filter_order = notch_filter_order,
-  sampling_rate = sampling_rate,
-  print_remaining_non_stationary = FALSE,
-  hard_remove_all = FALSE
-)
 
-LFP_stationary[1:3, 1:3, 1:3]
-
-LFP_stationary_hra <- transform_stationary(
-  LFP = LFP, 
-  detrending = TRUE, 
-  normalising = TRUE, 
-  ensemble_adjusting = TRUE, 
-  notch_filtering = TRUE,
-  notch_filter_order = notch_filter_order,
-  sampling_rate = sampling_rate,
-  print_remaining_non_stationary = FALSE,
-  hard_remove_all = TRUE
-)
-
-dim(LFP_stationary_hra)
-
-# adapt unprimed and primed ind to removed trials
-unprimed_ind_hra <- unprimed_ind[which(unprimed_ind %in% c(1:dim(LFP_stationary_hra)[3]))]
-primed_ind_hra <- primed_ind[which(primed_ind %in% c(1:dim(LFP_stationary_hra)[3]))]
-length(unprimed_ind_hra)
-length(primed_ind_hra)
+# Stationarity Transformation on the Whole LFP (Unequally) ----------------
 
 transform_stationary <- function(
     LFP,
@@ -460,16 +462,13 @@ transform_stationary <- function(
     notch_filter_order,
     sampling_rate,
     print_remaining_non_stationary
-    # , hard_remove_all
 ) {
   
   num_channels <- unique(lengths(LFP))
   num_trials <- length(LFP)
-  
-  # prepare list for the transformed LFPs
-  LFP_stationary <- vector("list", length = length(LFP))
-  
-  # loop over all channels
+
+  LFP_stationary <- vector("list", length = num_trials)
+
   for(i in 1:num_channels) {
     
     # extract the LFP from channel i
@@ -477,7 +476,7 @@ transform_stationary <- function(
     
     # removing linear trends
     if (detrending) {
-      # loop over all trials
+      # detrending each trial
       for (j in 1:num_trials) {
         LFP_channel_i[[j]] <- pracma::detrend(LFP_channel_i[[j]], tt = "linear")
       }
@@ -485,53 +484,42 @@ transform_stationary <- function(
     
     # removal of temporal mean and division of temporal sd
     if (normalising) {
-      means <- lapply(LFP_channel_i, mean)
-      sds <- lapply(LFP_channel_i, sd)
-      # Loop over all trials
+      trial_means <- lapply(LFP_channel_i, mean)
+      trial_sds <- lapply(LFP_channel_i, sd)
       for (j in 1:num_trials) {
-        LFP_channel_i[[j]] <- LFP_channel_i[[j]] - means[[j]]
-        LFP_channel_i[[j]] <- LFP_channel_i[[j]] / sds[[j]]
+        LFP_channel_i[[j]] <- LFP_channel_i[[j]] - trial_means[[j]]
+        LFP_channel_i[[j]] <- LFP_channel_i[[j]] / trial_sds[[j]]
       }
     }
     
     # ensemble mean removal and division of ensemble sd
     if (ensemble_adjusting) {
 
-      # length of the longest nested list within LFP_channel_i
-      max_length <- max(sapply(LFP_channel_i, function(trial) length(trial)))
-
-      # column-wise means across all trials, up to the length of the longest list
-      col_means <- sapply(seq_len(max_length), function(x) {
-        mean(sapply(LFP_channel_i, function(trial) {
-          if (x <= length(trial)) trial[[x]] else NA
-        }), na.rm = TRUE)
-      })
-
-      # loop over each trial and each position within the nested lists
+      # transform LFP_channel_i into a matrix, fill the rest with NAs
+      max_len <- max(sapply(LFP_channel_i, length))
+      LFP_channel_i_mat <- matrix(NA, nrow = length(LFP_channel_i), ncol = max_len)
       for (j in seq_along(LFP_channel_i)) {
-        for (x in seq_along(LFP_channel_i[[j]])) {
-          # Subtract column-wise mean
-          LFP_channel_i[[j]][[x]] <- LFP_channel_i[[j]][[x]] - col_means[x]
-        }
-      }
-
-      # column-wise standard deviations across all trials, up to the length of the longest list
-      col_sds <- sapply(seq_len(max_length), function(x) {
-        sd(sapply(LFP_channel_i, function(trial) {
-          if (x <= length(trial)) trial[[x]] else NA
-        }), na.rm = TRUE)
-      })
-
-      # loop over each trial and each position within the nested lists
-      for (j in seq_along(LFP_channel_i)) {
-        for (x in seq_along(LFP_channel_i[[j]])) {
-          # Divide by column-wise standard deviation
-          LFP_channel_i[[j]][[x]] <- LFP_channel_i[[j]][[x]] / col_sds[x]
-        }
-      }
+        LFP_channel_i_mat[j, 1:length(LFP_channel_i[[j]])] <- LFP_channel_i[[j]]
+      } # trials, time
       
-      # remove the NAs
-      LFP_channel_i <- lapply(LFP_channel_i, na.omit)
+      ensemble_means <- colMeans(LFP_channel_i_mat, na.rm = TRUE)
+      ensenlble_sds <- apply(LFP_channel_i_mat, 2, sd, na.rm = TRUE)
+      
+      # handle columns with zero standard deviation by setting sd to 1 to avoid division by zero
+      ensenlble_sds[ensenlble_sds == 0] <- 1
+      
+      # substract the ensemble mean and divide by ensemble sd
+      LFP_channel_i_mat <- t(t(LFP_channel_i_mat) - ensemble_means)
+      LFP_channel_i_mat <- t(t(LFP_channel_i_mat) / ensenlble_sds)
+      
+      # convert back to a list
+      LFP_channel_i <- vector("list", nrow(LFP_channel_i_mat))
+      for (j in seq_len(nrow(LFP_channel_i_mat))) {
+        LFP_channel_i[[j]] <- LFP_channel_i_mat[
+          j, 
+          !is.na(LFP_channel_i_mat[j, ]) & !is.nan(LFP_channel_i_mat[j, ]) & is.finite(LFP_channel_i_mat[j, ])
+        ]
+      }
 
     }
     
@@ -542,19 +530,26 @@ transform_stationary <- function(
       line_noise <- 60
       line_noise_norm <- line_noise / nyquist_freq
       
-      notch_filter <- signal::fir1(
-        # filter order - higher -> filters with sharper frequency responses, better attenuation, more computation; lower -> smoother frequency responses, may not achieve as much attenuation
-        n = notch_filter_order[i], 
-        # band edges
-        w = line_noise_norm,
-        # notch filter
-        type = "stop"
-      )
-      
       # notch filtering each LFP trial
       LFP_channel_i_filtered <- list()
-      for(j in 1:num_trials) {
-        LFP_channel_i_filtered[[j]] <- signal::filter(filt = notch_filter, x = LFP_channel_i[[j]])
+      for (j in 1:num_trials) {
+        
+        if (notch_filter_order[j] == 0) {
+          # no notch filter
+          LFP_channel_i_filtered[[j]] <- LFP_channel_i[[j]]
+        } else {
+          # filter
+          notch_filter <- signal::fir1(
+            # filter order - higher -> filters with sharper frequency responses, better attenuation, more computation; lower -> smoother frequency responses, may not achieve as much attenuation
+            n = notch_filter_order[j], 
+            # band edges
+            w = line_noise_norm,
+            # notch filter
+            type = "stop"
+          )
+          LFP_channel_i_filtered[[j]] <- signal::filter(filt = notch_filter, x = LFP_channel_i[[j]])
+        }
+        
       }
       LFP_channel_i <- LFP_channel_i_filtered
       
@@ -570,44 +565,11 @@ transform_stationary <- function(
     }
     
     # add LFP_channel_i to the list
-    for (j in seq_along(LFP_stationary)) {
-      if (i == 1) {
-        LFP_stationary[[j]] <- list(LFP_channel_i[[j]])
-      } else {
-        LFP_stationary[[j]][[i]] <- LFP_channel_i[[j]]
-      }
+    for (j in 1:num_trials) {
+      LFP_stationary[[j]][[i]] <- LFP_channel_i[[j]]
     }
     
   }
-  
-  # # exclude the remaining few non-stationary trials
-  # if (hard_remove_all) {
-  #   
-  #   p_values <- matrix(NA, nrow = num_trials, ncol = num_channels)
-  #   
-  #   # loop over all channels
-  #   for (j in 1:num_channels) {
-  #     
-  #     # loop over all trials
-  #     for (i in 1:num_trials) {
-  #       p_values[i, j] <- tseries::adf.test(LFP_stationary[j, , i])$p.value
-  #     }
-  #     
-  #   }
-  #   
-  #   all_channels_stationary <- rep(NA, nrow(p_values))
-  #   for (j in 1:nrow(p_values)) {
-  #     
-  #     # check if trials in all channels are stationary
-  #     all_channels_stationary[j] <- all(p_values[j, ] < 0.05)
-  #     stationary_ind <- which(all_channels_stationary)
-  #     
-  #   }
-  #   
-  #   # filter the stationary trials
-  #   LFP_stationary <- LFP_stationary[, , stationary_ind]
-  #   
-  # }
   
   return(LFP_stationary)
   
@@ -628,7 +590,7 @@ adf_stationarity_test(LFP = LFP_stationary)
 adf_result_baseline
 
 # find the best filter order for each trial (first run transform_stationary() with notch_filtering = FALSE)
-find_best_filter_order <- function(LFP){
+find_best_filter_order <- function(LFP, max_filter_order, nyquist_freq){
   
   num_channels <- unique(lengths(LFP))
   num_trials <- length(LFP)
@@ -641,14 +603,25 @@ find_best_filter_order <- function(LFP){
     # extract the LFP from trial k
     LFP_trial_k <- LFP[[k]] # channel, time
     
-    adf_result_notch_trial_k <- rep(NA, 30)
+    adf_result_notch_trial_k <- rep(NA, max_filter_order + 1)
     
     # remove frequencies around 60 Hz (= electrical line noise)
     line_noise <- 60
     line_noise_norm <- line_noise / nyquist_freq
     
+    # no filtering
+    LFP_not_filtered <- LFP_trial_k
+    
+    # ADF test for stationarity
+    p_values <- rep(NA, length(LFP_not_filtered))
+    for (i in 1:length(LFP_not_filtered)) {
+      p_values[i] <- tseries::adf.test(LFP_not_filtered[[i]])$p.value
+    }
+    
+    adf_result_notch_trial_k[1] <- sum(p_values < 0.05) / length(p_values)
+    
     # try different values for the filter order
-    for(j in 1:30){
+    for(j in 1:max_filter_order){
       notch_filter <- signal::fir1(
         # filter order - higher -> filters with sharper frequency responses, better attenuation, more computation; lower -> smoother frequency responses, may not achieve as much attenuation
         n = j,
@@ -657,28 +630,37 @@ find_best_filter_order <- function(LFP){
         # notch filter
         type = "stop"
       )
+      
       # notch filtering each LFP signal of each channel
       LFP_filtered <- list()
-      for(i in 1:num_channels) {
+      for (i in 1:num_channels) {
         LFP_filtered[[i]] <- signal::filter(filt = notch_filter, x = LFP_trial_k[[i]])
       }
+      
       # ADF test for stationarity
       p_values <- rep(NA, length(LFP_filtered))
       for (i in 1:length(LFP_filtered)) {
         p_values[i] <- tseries::adf.test(LFP_filtered[[i]])$p.value
       }
-      adf_result_notch_trial_k[j] <- sum(p_values < 0.05) / length(p_values)
+      adf_result_notch_trial_k[j + 1] <- sum(p_values < 0.05) / length(p_values)
     }
-    # get the filter order for each trial for which the most trials are stationary
-    adf_result_notch[k] <- which.max(adf_result_notch_trial_k)
+    
+    # get the filter order for each trial for which the most LFP channels are stationary
+    adf_result_notch[k] <- which.max(adf_result_notch_trial_k) - 1
+    
   }
   
   return(adf_result_notch)
   
 }
 
-adf_result_notch <- find_best_filter_order(LFP = LFP_stationary)
-adf_result_notch
+adf_result_notch <- find_best_filter_order(
+  LFP = LFP_stationary,
+  max_filter_order = 20, 
+  nyquist_freq = nyquist_freq
+)
+head(adf_result_notch)
+table(adf_result_notch)
 
 LFP_stationary <- transform_stationary(
   LFP = LFP, 
@@ -693,3 +675,48 @@ LFP_stationary <- transform_stationary(
 
 adf_stationarity_test(LFP = LFP_stationary)
 adf_result_baseline
+
+# exclude the remaining few non-stationary trials
+exclude_remaining_non_stationary <- function(LFP) {
+  
+  num_trials <- length(LFP)
+  num_channels <- unique(lengths(LFP))
+  
+  p_values <- matrix(NA, nrow = num_trials, ncol = num_channels)
+  
+  for (i in 1:num_trials) {
+    for (j in 1:num_channels) {
+      # ADF test
+      p_values[i, j] <- tseries::adf.test(LFP[[i]][[j]])$p.value
+    }
+  }
+  
+  all_channels_stationary <- rep(NA, nrow(p_values))
+  
+  for (i in 1:nrow(p_values)) {
+    
+    # check if trials in all channels are stationary
+    all_channels_stationary[i] <- all(p_values[i, ] < 0.05)
+    stationary_ind <- which(all_channels_stationary)
+    
+  }
+  
+  num_removed <- length(LFP) - length(LFP[stationary_ind])
+  print(paste(num_removed, "non-stationary trials removed."))
+  
+  # filter the stationary trials
+  LFP_stationary <- LFP[stationary_ind]
+  
+  return(LFP_stationary)
+  
+}
+
+LFP_stationary_hra <- exclude_remaining_non_stationary(LFP = LFP_stationary)
+
+adf_stationarity_test(LFP = LFP_stationary_hra)
+
+# adapt unprimed and primed ind to removed trials
+unprimed_ind_hra <- unprimed_ind[which(unprimed_ind %in% c(1:dim(LFP_stationary_hra)[3]))]
+primed_ind_hra <- primed_ind[which(primed_ind %in% c(1:dim(LFP_stationary_hra)[3]))]
+length(unprimed_ind_hra)
+length(primed_ind_hra)
