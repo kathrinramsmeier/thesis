@@ -8,9 +8,11 @@
 # look at the 6th and 14th channel of trial 333 as an example first
 trial <- 333
 channel <- 6
-sample_LFP_1 <- LFP_stationary[channel, , trial]
+# sample_LFP_1 <- LFP_stationary[channel, , trial]
+sample_LFP_1 <- as.vector(LFP_stationary[[trial]][[channel]])
 channel <- 14
-sample_LFP_2 <- LFP_stationary[channel, , trial]
+# sample_LFP_2 <- LFP_stationary[channel, , trial]
+sample_LFP_2 <- as.vector(LFP_stationary[[trial]][[channel]])
 plot(sample_LFP_1, type = "l")
 lines(sample_LFP_2, type = "l", col = "red")
 
@@ -111,23 +113,58 @@ calculate_coherence(
   meaned = TRUE
 )
 
+# # compute coherence between the channels in each frequency band in a sample trial
+# calculate_trial_coherence <- function(LFP, trial, frequency_bands, sampling_rate, filter_order) {
+#   
+#   # prepare matrix to store results
+#   coherences_trial <- array(dim = c(dim(LFP)[1], dim(LFP)[1], length(frequency_bands)))
+#   
+#   # coherence for trial i between each channel
+#   for (i in 1:dim(LFP)[1]) {
+#     for (j in 1:dim(LFP)[1]) {
+#       trial_freqband_filtered_1 <- freqband_filtering(
+#         LFP_trial = LFP[i, , trial], 
+#         frequency_bands = frequency_bands, 
+#         sampling_rate = sampling_rate,
+#         filter_order = filter_order
+#       )
+#       trial_freqband_filtered_2 <- freqband_filtering(
+#         LFP_trial = LFP[j, , trial], 
+#         frequency_bands = frequency_bands, 
+#         sampling_rate = sampling_rate,
+#         filter_order = filter_order
+#       )
+#       coherences_trial[i, j, ] <- calculate_coherence(
+#         LFP_trial_1_freqband_filtered = trial_freqband_filtered_1, 
+#         LFP_trial_2_freqband_filtered = trial_freqband_filtered_2,
+#         meaned = TRUE
+#       )
+#     }
+#   }
+#   
+#   return(coherences_trial)
+#     
+# }
+
 # compute coherence between the channels in each frequency band in a sample trial
 calculate_trial_coherence <- function(LFP, trial, frequency_bands, sampling_rate, filter_order) {
+
+  num_channels <- unique(lengths(LFP))
   
   # prepare matrix to store results
-  coherences_trial <- array(dim = c(dim(LFP)[1], dim(LFP)[1], length(frequency_bands)))
+  coherences_trial <- array(dim = c(num_channels, num_channels, length(frequency_bands)))
   
   # coherence for trial i between each channel
-  for (i in 1:dim(LFP)[1]) {
-    for (j in 1:dim(LFP)[1]) {
+  for (i in 1:num_channels) {
+    for (j in 1:num_channels) {
       trial_freqband_filtered_1 <- freqband_filtering(
-        LFP_trial = LFP[i, , trial], 
+        LFP_trial = as.numeric(LFP[[trial]][[i]]), 
         frequency_bands = frequency_bands, 
         sampling_rate = sampling_rate,
         filter_order = filter_order
       )
       trial_freqband_filtered_2 <- freqband_filtering(
-        LFP_trial = LFP[j, , trial], 
+        LFP_trial =  as.numeric(LFP[[trial]][[j]]), 
         frequency_bands = frequency_bands, 
         sampling_rate = sampling_rate,
         filter_order = filter_order
@@ -141,7 +178,7 @@ calculate_trial_coherence <- function(LFP, trial, frequency_bands, sampling_rate
   }
   
   return(coherences_trial)
-    
+  
 }
 
 coherence_sample_trial <- calculate_trial_coherence(
@@ -156,30 +193,92 @@ dim(coherence_sample_trial) # dim 1 and 2: channel x channel combi, dim 3: frequ
 coherence_sample_trial[, , 1] # coherence of trial 333 between the different channels in delta band 
 coherence_sample_trial[1, 2, 1] # coherence of trial 333 between the channel 1 and 2 in delta band 
 
+# # compute coherence between the channels in each frequency band for all primed and unprimed trials
+# calculate_avg_coherence <- function(LFP, un_primed_ind, frequency_bands, sampling_rate, filter_order) {
+#   
+#   # filter either primed or unprimed trials
+#   LFP_trials <- LFP[, , un_primed_ind]
+# 
+#   # prepare matrices to store results
+#   coherences <- array(dim = c(dim(LFP)[1], dim(LFP)[1], length(frequency_bands)))
+#   sum_coherences <- array(0 ,dim = c(dim(LFP)[1], dim(LFP)[1], length(frequency_bands)))
+#   
+#   # loop over all trials
+#   for (k in 1:dim(LFP_trials)[3]) {
+#     
+#     # coherence for trial i between each channel
+#     for (i in 1:dim(LFP)[1]) {
+#       for (j in 1:dim(LFP)[1]) {
+#         trial_freqband_filtered_1 <- freqband_filtering(
+#           LFP_trial = LFP_trials[i, , k], 
+#           frequency_bands = frequency_bands, 
+#           sampling_rate = sampling_rate,
+#           filter_order = filter_order
+#         )
+#         trial_freqband_filtered_2 <- freqband_filtering(
+#           LFP_trial = LFP_trials[j, , k], 
+#           frequency_bands = frequency_bands, 
+#           sampling_rate = sampling_rate,
+#           filter_order = filter_order
+#         )
+#         coherences[i, j, ] <- calculate_coherence(
+#           LFP_trial_1_freqband_filtered = trial_freqband_filtered_1, 
+#           LFP_trial_2_freqband_filtered = trial_freqband_filtered_2,
+#           meaned = TRUE
+#         )
+#       }
+#     }
+#     
+#     # calculate mean coherence over all trials (need to think again if that is plausible to do!!!)
+#     sum_coherences <- sum_coherences + coherences
+#     avg_coherences <- sum_coherences / dim(LFP_trials)[3]
+#     
+#   }
+#   
+#   return(avg_coherences)
+#   
+# }
+# 
+# # test for a subset
+# temp <- LFP_stationary[, , 1:10]
+# temp2 <- unprimed_ind[unprimed_ind <= 10]
+# avg_coherence_test <- calculate_avg_coherence(
+#   LFP = temp,
+#   un_primed_ind = temp2,
+#   frequency_bands = frequency_bands,
+#   sampling_rate = sampling_rate, 
+#   filter_order = 2
+# )
+# dim(avg_coherence_test) # dim 1 and 2: channel x channel combi, dim 3: frequency bands
+# avg_coherence_test[1:3, 1:3, 1:3]
+
 # compute coherence between the channels in each frequency band for all primed and unprimed trials
 calculate_avg_coherence <- function(LFP, un_primed_ind, frequency_bands, sampling_rate, filter_order) {
   
+  num_channels <- unique(lengths(LFP))
+  num_trials <- length(LFP)
+  
   # filter either primed or unprimed trials
-  LFP_trials <- LFP[, , un_primed_ind]
-
+  LFP_trials <- LFP[un_primed_ind]
+  
   # prepare matrices to store results
-  coherences <- array(dim = c(dim(LFP)[1], dim(LFP)[1], length(frequency_bands)))
-  sum_coherences <- array(0 ,dim = c(dim(LFP)[1], dim(LFP)[1], length(frequency_bands)))
+  coherences <- array(dim = c(num_channels, num_channels, length(frequency_bands)))
+  sum_coherences <- array(0 ,dim = c(num_channels, num_channels, length(frequency_bands)))
   
   # loop over all trials
-  for (k in 1:dim(LFP_trials)[3]) {
+  for (k in 1:num_trials) {
     
     # coherence for trial i between each channel
-    for (i in 1:dim(LFP)[1]) {
-      for (j in 1:dim(LFP)[1]) {
+    for (i in 1:num_channels) {
+      for (j in 1:num_channels) {
         trial_freqband_filtered_1 <- freqband_filtering(
-          LFP_trial = LFP_trials[i, , k], 
+          LFP_trial = as.numeric(LFP[[k]][[i]]), 
           frequency_bands = frequency_bands, 
           sampling_rate = sampling_rate,
           filter_order = filter_order
         )
         trial_freqband_filtered_2 <- freqband_filtering(
-          LFP_trial = LFP_trials[j, , k], 
+          LFP_trial = as.numeric(LFP[[k]][[j]]), 
           frequency_bands = frequency_bands, 
           sampling_rate = sampling_rate,
           filter_order = filter_order
@@ -194,7 +293,7 @@ calculate_avg_coherence <- function(LFP, un_primed_ind, frequency_bands, samplin
     
     # calculate mean coherence over all trials (need to think again if that is plausible to do!!!)
     sum_coherences <- sum_coherences + coherences
-    avg_coherences <- sum_coherences / dim(LFP_trials)[3]
+    avg_coherences <- sum_coherences / length(LFP_trials)
     
   }
   
@@ -203,7 +302,7 @@ calculate_avg_coherence <- function(LFP, un_primed_ind, frequency_bands, samplin
 }
 
 # test for a subset
-temp <- LFP_stationary[, , 1:10]
+temp <- LFP_stationary[1:10]
 temp2 <- unprimed_ind[unprimed_ind <= 10]
 avg_coherence_test <- calculate_avg_coherence(
   LFP = temp,
@@ -268,9 +367,9 @@ plot_heatmap(result_array = coherence_hat_primed, frequency_bands = frequency_ba
 
 # compute PLV and PLI across the frequency bands
 # formulas from: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3674231/#:~:text=PLV%20can%20therefore%20be%20viewed,each%20scaling%20of%20the%20wavelet.
-calculate_PLV_PLI <- function(LFP_trial_1_freqband_filtered, LFP_trial_2_freqband_filtered, PLV_PLI) {
+calculate_PLV_PLI_PPC <- function(LFP_trial_1_freqband_filtered, LFP_trial_2_freqband_filtered, method) {
   
-  stopifnot(PLV_PLI %in% c("PLV", "PLI"))
+  stopifnot(method %in% c("PLV", "PLI", "PPC"))
   
   result <- rep(NA, dim(LFP_trial_1_freqband_filtered)[2])
   names(result) <- colnames(LFP_trial_1_freqband_filtered)
@@ -282,15 +381,34 @@ calculate_PLV_PLI <- function(LFP_trial_1_freqband_filtered, LFP_trial_2_freqban
     LFP_1_freqband_ht <- gsignal::hilbert(LFP_trial_1_freqband_filtered[, i])
     LFP_2_freqband_ht <- gsignal::hilbert(LFP_trial_2_freqband_filtered[, i])
     
-    # compute phase difference
+    # compute relative phase = phase difference
     phase_diffs <- pracma::angle(LFP_1_freqband_ht * Conj(LFP_2_freqband_ht))  # arg((LFP_1_band_ht * Conj(LFP_2_band_ht)) / (abs(LFP_1_band_ht) * abs(LFP_2_band_ht)))
     
-    if (PLV_PLI == "PLV") {
+    if (method == "PLV") {
+      
       # compute the PLV for each frequency band
       result[i] <- abs(mean(exp(1i * phase_diffs)))
-    } else {
+      
+    } else if (method == "PLI") {
+      
       # compute the PLI for each frequency band
       result[i] <- abs(mean(sign(phase_diffs)))
+      
+    } else if (method == "PPC") { # check this again!!!!!
+
+      N <- length(phase_diffs)
+      sum_of_dot_products <- 0
+      
+      # compute pairwise dot products
+      for (j in 1:(N - 1)) {
+        for (k in (j + 1):N) {
+          dot_product <- cos(phase_diffs)[j] * cos(phase_diffs)[k] + sin(phase_diffs)[j] * sin(phase_diffs)[k]
+          sum_of_dot_products <- sum_of_dot_products + dot_product
+        }
+      }
+      
+      result[i] <- (2 / (N * (N - 1))) * sum_of_dot_products
+      
     }
   }
   
@@ -299,61 +417,133 @@ calculate_PLV_PLI <- function(LFP_trial_1_freqband_filtered, LFP_trial_2_freqban
 }
 
 # try PLV calc. for a sample trial for two different channels
-freqband_PLV_sample_LFPs <- calculate_PLV_PLI(
+freqband_PLV_sample_LFPs <- calculate_PLV_PLI_PPC(
   LFP_trial_1_freqband_filtered = sample_LFP_1_freqband_filtered, 
   LFP_trial_2_freqband_filtered = sample_LFP_2_freqband_filtered,
-  PLV_PLI = "PLV"
+  method = "PLV"
 )
 freqband_PLV_sample_LFPs
 
 # try PLI calc. for a sample trial for two different channels
-freqband_PLI_sample_LFPs <- calculate_PLV_PLI(
+freqband_PLI_sample_LFPs <- calculate_PLV_PLI_PPC(
   LFP_trial_1_freqband_filtered = sample_LFP_1_freqband_filtered, 
   LFP_trial_2_freqband_filtered = sample_LFP_2_freqband_filtered,
-  PLV_PLI = "PLI"
+  method = "PLI"
 )
 freqband_PLV_sample_LFPs
 
-# compute PPC: PLV/PLI between the channels in each frequency band for all primed and unprimed trials
-calculate_PPC <- function(LFP, un_primed_ind, frequency_bands, sampling_rate, filter_order, PLV_PLI) {
+# try PPC calc. for a sample trial for two different channels
+freqband_PPC_sample_LFPs <- calculate_PLV_PLI_PPC(
+  LFP_trial_1_freqband_filtered = sample_LFP_1_freqband_filtered, 
+  LFP_trial_2_freqband_filtered = sample_LFP_2_freqband_filtered,
+  method = "PPC"
+)
+freqband_PPC_sample_LFPs
+
+# compute PLV/PLI/PPC between the channels in each frequency band for all primed and unprimed trials
+# calculate_PLV_PLI_PPC_hat <- function(LFP, un_primed_ind, frequency_bands, sampling_rate, filter_order, method) {
+#   
+#   # filter either primed or unprimed trials
+#   LFP_trials <- LFP[, , un_primed_ind]
+#   
+#   # prepare matrices to store results
+#   results <- array(dim = c(dim(LFP)[1], dim(LFP)[1], length(frequency_bands)))
+#   sum_results <- array(0 ,dim = c(dim(LFP)[1], dim(LFP)[1], length(frequency_bands)))
+#   
+#   # loop over all trials
+#   for (k in 1:dim(LFP_trials)[3]) {
+#     
+#     # PLV/PLI/PPC for trial i between each channel
+#     for (i in 1:dim(LFP)[1]) {
+#       for (j in 1:dim(LFP)[1]) {
+#         trial_freqband_filtered_1 <- freqband_filtering(
+#           LFP_trial = LFP_trials[i, , k], 
+#           frequency_bands = frequency_bands, 
+#           sampling_rate = sampling_rate,
+#           filter_order = filter_order
+#         )
+#         trial_freqband_filtered_2 <- freqband_filtering(
+#           LFP_trial = LFP_trials[j, , k], 
+#           frequency_bands = frequency_bands, 
+#           sampling_rate = sampling_rate,
+#           filter_order = filter_order
+#         )
+#         results[i, j, ] <- calculate_PLV_PLI_PPC(
+#           LFP_trial_1_freqband_filtered = trial_freqband_filtered_1, 
+#           LFP_trial_2_freqband_filtered = trial_freqband_filtered_2,
+#           method = method
+#         )
+#       }
+#     }
+#     
+#     # calculate mean PLV/PLI/PPC over all trials 
+#     # see https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3674231/#:~:text=PLV%20can%20therefore%20be%20viewed,each%20scaling%20of%20the%20wavelet.
+#     sum_results <- sum_results + results
+#     avg_results <- sum_results / dim(LFP_trials)[3]
+#     
+#   }
+#   
+#   return(avg_results)
+#   
+# }
+# 
+# # test for a subset
+# temp <- LFP_stationary[, , 1:10]
+# temp2 <- unprimed_ind[unprimed_ind <= 10]
+# PLV_hat_test <- calculate_PLV_PLI_PPC_hat(
+#   LFP = temp,
+#   un_primed_ind = temp2,
+#   frequency_bands = frequency_bands,
+#   sampling_rate = sampling_rate, 
+#   filter_order = 2,
+#   method = "PLV"
+# )
+# dim(PLV_hat_test) # dim 1 and 2: channel x channel combi, dim 3: frequency bands
+# PLV_hat_test[1:3, 1:3, 1:3]
+
+# compute PLV/PLI/PPC between the channels in each frequency band for all primed and unprimed trials
+calculate_PLV_PLI_PPC_hat <- function(LFP, un_primed_ind, frequency_bands, sampling_rate, filter_order, method) {
+  
+  num_channels <- unique(lengths(LFP))
+  num_trials <- length(LFP)
   
   # filter either primed or unprimed trials
-  LFP_trials <- LFP[, , un_primed_ind]
+  LFP_trials <- LFP[un_primed_ind]
   
   # prepare matrices to store results
-  results <- array(dim = c(dim(LFP)[1], dim(LFP)[1], length(frequency_bands)))
-  sum_results <- array(0 ,dim = c(dim(LFP)[1], dim(LFP)[1], length(frequency_bands)))
+  results <- array(dim = c(num_channels, num_channels, length(frequency_bands)))
+  sum_results <- array(0 ,dim = c(num_channels, num_channels, length(frequency_bands)))
   
   # loop over all trials
-  for (k in 1:dim(LFP_trials)[3]) {
+  for (k in 1:num_trials) {
     
-    # PLV/PLI for trial i between each channel
-    for (i in 1:dim(LFP)[1]) {
-      for (j in 1:dim(LFP)[1]) {
+    # PLV/PLI/PPC for trial i between each channel
+    for (i in 1:num_channels) {
+      for (j in 1:num_channels) {
         trial_freqband_filtered_1 <- freqband_filtering(
-          LFP_trial = LFP_trials[i, , k], 
+          LFP_trial = as.numeric(LFP[[k]][[i]]), 
           frequency_bands = frequency_bands, 
           sampling_rate = sampling_rate,
           filter_order = filter_order
         )
         trial_freqband_filtered_2 <- freqband_filtering(
-          LFP_trial = LFP_trials[j, , k], 
+          LFP_trial = as.numeric(LFP[[k]][[j]]), 
           frequency_bands = frequency_bands, 
           sampling_rate = sampling_rate,
           filter_order = filter_order
         )
-        results[i, j, ] <- calculate_PLV_PLI(
+        results[i, j, ] <- calculate_PLV_PLI_PPC(
           LFP_trial_1_freqband_filtered = trial_freqband_filtered_1, 
           LFP_trial_2_freqband_filtered = trial_freqband_filtered_2,
-          PLV_PLI = PLV_PLI
+          method = method
         )
       }
     }
     
-    # calculate mean PLV/PLI over all trials 
+    # calculate mean PLV/PLI/PPC over all trials 
     # see https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3674231/#:~:text=PLV%20can%20therefore%20be%20viewed,each%20scaling%20of%20the%20wavelet.
     sum_results <- sum_results + results
-    avg_results <- sum_results / dim(LFP_trials)[3]
+    avg_results <- sum_results / length(LFP_trials)
     
   }
   
@@ -362,59 +552,79 @@ calculate_PPC <- function(LFP, un_primed_ind, frequency_bands, sampling_rate, fi
 }
 
 # test for a subset
-temp <- LFP_stationary[, , 1:10]
+temp <- LFP_stationary[1:10]
 temp2 <- unprimed_ind[unprimed_ind <= 10]
-PPC_test <- calculate_PPC(
+PLV_hat_test <- calculate_PLV_PLI_PPC_hat(
   LFP = temp,
   un_primed_ind = temp2,
   frequency_bands = frequency_bands,
   sampling_rate = sampling_rate, 
   filter_order = 2,
-  PLV_PLI = "PLV"
+  method = "PLV"
 )
-dim(PPC_test) # dim 1 and 2: channel x channel combi, dim 3: frequency bands
-PPC_test[1:3, 1:3, 1:3]
+dim(PLV_hat_test) # dim 1 and 2: channel x channel combi, dim 3: frequency bands
+PLV_hat_test[1:3, 1:3, 1:3]
 
-plot_heatmap(result_array = PPC_test, frequency_bands = frequency_bands)
+plot_heatmap(result_array = PLV_hat_test, frequency_bands = frequency_bands)
 
-# calculate PPC - PLV between the channels for all frequency bands for unprimed trials
-PPC_PLV_unprimed <- calculate_PPC(
+# calculate PLV between the channels for all frequency bands for unprimed trials
+PLV_hat_unprimed <- calculate_PLV_PLI_PPC_hat(
   LFP = LFP_stationary,
   un_primed_ind = unprimed_ind,
   frequency_bands = frequency_bands,
   sampling_rate = sampling_rate, 
   filter_order = 2,
-  PLV_PLI = "PLV"
+  method = "PLV"
 )
 
-# calculate PPC - PLV between the channels for all frequency bands for primed trials
-PPC_PLV_primed <- calculate_PPC(
+# calculate PLV between the channels for all frequency bands for primed trials
+PLV_hat_primed <- calculate_PLV_PLI_PPC_hat(
   LFP = LFP_stationary,
   un_primed_ind = primed_ind,
   frequency_bands = frequency_bands,
   sampling_rate = sampling_rate, 
   filter_order = 2,
-  PLV_PLI = "PLV"
+  method = "PLV"
 )
 
-# calculate PPC - PLI between the channels for all frequency bands for unprimed trials
-PPC_PLI_unprimed <- calculate_PLV_PLI_hat(
+# calculate PLI between the channels for all frequency bands for unprimed trials
+PLI_hat_unprimed <- calculate_PLV_PLI_PPC_hat(
   LFP = LFP_stationary,
   un_primed_ind = unprimed_ind,
   frequency_bands = frequency_bands,
   sampling_rate = sampling_rate, 
   filter_order = 2,
-  PLV_PLI = "PLI"
+  method = "PLI"
 )
 
-# calculate PPC - PLI between the channels for all frequency bands for primed trials
-PPC_PLI_primed <- calculate_PLV_PLI_hat(
+# calculate PLI between the channels for all frequency bands for primed trials
+PLI_hat_primed <- calculate_PLV_PLI_PPC_hat(
   LFP = LFP_stationary,
   un_primed_ind = primed_ind,
   frequency_bands = frequency_bands,
   sampling_rate = sampling_rate, 
   filter_order = 2,
-  PLV_PLI = "PLI"
+  method = "PLI"
+)
+
+# calculate PPC between the channels for all frequency bands for unprimed trials
+PPC_hat_unprimed <- calculate_PLV_PLI_PPC_hat(
+  LFP = LFP_stationary,
+  un_primed_ind = unprimed_ind,
+  frequency_bands = frequency_bands,
+  sampling_rate = sampling_rate, 
+  filter_order = 2,
+  method = "PPC"
+)
+
+# calculate PPC between the channels for all frequency bands for primed trials
+PPC_hat_primed <- calculate_PLV_PLI_PPC_hat(
+  LFP = LFP_stationary,
+  un_primed_ind = primed_ind,
+  frequency_bands = frequency_bands,
+  sampling_rate = sampling_rate, 
+  filter_order = 2,
+  method = "PPC"
 )
 
 
