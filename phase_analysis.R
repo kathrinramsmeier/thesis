@@ -6,7 +6,7 @@
 
 
 # look at the 6th and 14th channel of trial 333 as an example first
-trial <- 333
+trial <- 27
 channel <- 6
 # sample_LFP_1 <- LFP_stationary[channel, , trial]
 sample_LFP_1 <- as.vector(LFP_stationary[[trial]][[channel]])
@@ -68,7 +68,7 @@ sample_LFP_2_freqband_filtered <- freqband_filtering(
 # calculate coherence between two signals
 calculate_coherence <- function(LFP_trial_1_freqband_filtered, LFP_trial_2_freqband_filtered, meaned) {
   
-  coherences <- matrix(nrow = 9, ncol = ncol(LFP_trial_1_freqband_filtered))
+  coherences <- list()
   
   # loop over all frequency bands
   for (i in 1:ncol(LFP_trial_1_freqband_filtered)) {
@@ -83,17 +83,14 @@ calculate_coherence <- function(LFP_trial_1_freqband_filtered, LFP_trial_2_freqb
     asd_2 <- gsignal::cpsd(cbind(LFP_trial_2_freqband_filtered[, i], LFP_trial_2_freqband_filtered[, i]))$cross
     
     # coherence
-    coherences[, i] <- csd_magnitudes^2 / (asd_1 * asd_2)
+    coherences[[i]] <- as.numeric(csd_magnitudes^2 / (asd_1 * asd_2))
     
   }
   
   # mean coherence in each frequency band !!!! need to check if that is plausible to do !!!!
   if(meaned) {
-    coherences <- colMeans(coherences)
+    coherences <- unlist(lapply(freqband_coherences_sample_LFPs, mean))
     names(coherences) <- names(frequency_bands)
-    
-  } else {
-    colnames(coherences) <- names(frequency_bands)
   }
   
   return(coherences)
@@ -295,6 +292,8 @@ calculate_avg_coherence <- function(LFP, un_primed_ind, frequency_bands, samplin
     sum_coherences <- sum_coherences + coherences
     avg_coherences <- sum_coherences / length(LFP_trials)
     
+    print(paste("Trial", k, "done from", num_trials))
+    
   }
   
   return(avg_coherences)
@@ -363,7 +362,7 @@ plot_heatmap(result_array = coherence_hat_primed, frequency_bands = frequency_ba
 
 
 
-# Phase Locking Value (PLV) and Phase Lag Index (PLI) ---------------------
+# PLV, PLI and PPC --------------------------------------------------------
 
 # compute PLV and PLI across the frequency bands
 # formulas from: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3674231/#:~:text=PLV%20can%20therefore%20be%20viewed,each%20scaling%20of%20the%20wavelet.
