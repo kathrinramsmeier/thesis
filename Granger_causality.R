@@ -5,16 +5,17 @@
 # LFP_sample_trial <- LFP_stationary_hra[, , 333]
 # LFP_sample_trial <- t(LFP_sample_trial) 
 # dim(LFP_sample_trial) # time, channel
-LFP_sample_trial <- LFP_stationary[[333]]
+LFP_sample_trial <- LFP_stationary_hra[[333]]
 LFP_sample_trial <- do.call(cbind, lapply(LFP_sample_trial, function(x) as.numeric(x)))
 dim(LFP_sample_trial) # time, channel
+colnames(LFP_sample_trial) <- paste0("channel", 1:15)
 
-# stationarity check
-p_values <- rep(NA, ncol(LFP_sample_trial))
-for (i in 1:ncol(LFP_sample_trial)) {
-  p_values[i] <- tseries::adf.test(LFP_sample_trial[, i])$p.value
-}
-sum(p_values < 0.05) / length(p_values)
+# # stationarity check
+# p_values <- rep(NA, ncol(LFP_sample_trial))
+# for (i in 1:ncol(LFP_sample_trial)) {
+#   p_values[i] <- tseries::adf.test(LFP_sample_trial[, i])$p.value
+# }
+# sum(p_values < 0.05) / length(p_values)
 
 # select lag for VAR model using AIC
 select_lag <- VARselect(LFP_sample_trial, type = "const", lag.max = 30) 
@@ -22,7 +23,7 @@ select_lag$selection
 plot(select_lag$criteria[1, ])
 
 # create the VAR model
-VAR_model_sample_trial <- vars::VAR(LFP_sample_trial, type = "const", p = 1) # try with lower lag order because the model is to complex otherwise for that "small" amount of observations compared to 15 variables https://www.frontiersin.org/articles/10.3389/fncom.2013.00159/full#F2
+VAR_model_sample_trial <- vars::VAR(LFP_sample_trial, type = "const", p = 3) # try with lower lag order because the model is to complex otherwise for that "small" amount of observations compared to 15 variables https://www.frontiersin.org/articles/10.3389/fncom.2013.00159/full#F2
 
 
 
@@ -89,11 +90,36 @@ dW_VAR_test <- function(VAR_model) {
   return(d)
 }
 
+# 4.) Portmanteau- and Breusch-Godfrey test (not mentioned in the paper)
+# H0: no autocorrelation in the residuals
+# Breusch, T . S. (1978), Testing for autocorrelation in dynamic linear models, Australian Economic Papers, 17: 334-355.
+# Godfrey, L. G. (1978), Testing for higher order serial correlation in regression equations when the regressors include lagged dependent variables, Econometrica, 46: 1303-1313.
+P_BG_test <- function(VAR_model) {
+  p_values <- rep(NA, 2)
+  names(p_values) <- c("Portmanteu", "Breusch-Godfrey")
+  p_values[1] <- vars::serial.test(VAR_model_sample_trial, lags.pt = 2, type = "PT.adjusted")$serial$p.value
+  p_values[2] <- vars::serial.test(VAR_model_sample_trial, type = "BG")$serial$p.value
+  return(p_values)
+}
+
+# 5.) investigate residuals (not mentioned in the paper)
+plot_residuals <- function(res) {
+  par(mfrow = c(3, 5))  
+  for (i in 1:15) {  
+    plot(res[, i], type = "p", xlab = "Time", ylab = "Residuals")
+  }
+  par(mfrow = c(1, 1))
+}
+
+
 head(residuals(VAR_model_sample_trial))
 AIC(VAR_model_sample_trial)
 calculate_adj_sum_square_err(VAR_model = VAR_model_sample_trial) # values less then 0.3 signify that the VAR model may not have captured the data adequately
 check_consistency(VAR_model = VAR_model_sample_trial) # values below 80% may give cause fo concern
 dW_VAR_test(VAR_model = VAR_model_sample_trial) # if d < 1 there may be cause for concern
+P_BG_test(VAR_model = VAR_model_sample_trial) # significant autocorrelation present in the residuals
+plot_residuals(res = residuals(VAR_model_sample_trial)) # they show pattern, which is not good but is way better with lag order 3 instead of 1
+# -> indication that the VAR model is not capturing the data well
 
 
 
@@ -102,11 +128,121 @@ dW_VAR_test(VAR_model = VAR_model_sample_trial) # if d < 1 there may be cause fo
 # temp <- zoo::zoo(LFP_sample_trial)
 # 
 # # VAR model with Elastic Net
-# VAR_model_trial1 <- ConnectednessApproach::ElasticNetVAR(
+# VAR_model_sample_trial <- ConnectednessApproach::ElasticNetVAR(
 #   temp,
 #   configuration = list(nlag = 1, nfolds = 10, loss = "mae", alpha = NULL, n_alpha = 10)
 # )
-# dim(VAR_model_trial1$B)
+# dim(VAR_model_sample_trial$B)
+
+
+
+# VECM Model --------------------------------------------------------------
+
+colnames(LFP_sample_trial) <- paste0("Channel", 1:15)
+
+# Johansen test
+LFP_sample_trial_johansen <- urca::ca.jo(
+  x = LFP_sample_trial, 
+  # test to be conducted
+  type = "trace", 
+  # no intercept or constant term in cointegration
+  ecdet = "none", 
+  # lag order
+  K = 2
+)
+summary_johansen <- summary(LFP_sample_trial_johansen)
+
+vecm_model <- tsDyn::VECM(LFP_sample_trial, lag = 2, r = 14, estim = "ML") # r = # of cointegration vectors
+
+# convert into a VAR model
+VAR_model_sample_trial <- vars::vec2var(LFP_sample_trial_johansen, r = 14)
+
+# GC
+bruceR::granger_causality(VAR_model_sample_trial) # does not work
+causality(VAR_model_sample_trial) # does not work
+
+
+
+# VECM Model on the 3 Layer Levels -----------------------------------------
+
+colnames(LFP_sample_trial) <- paste0("Channel", 1:15)
+
+high_level <- LFP_sample_trial[, 10:15]
+middle_level <- LFP_sample_trial[, 5:10]
+low_level <- LFP_sample_trial[, 1:5]  
+
+# # Johansen test
+# high_level_johansen <- urca::ca.jo(
+#   x = high_level, 
+#   # test to be conducted
+#   type = "trace", 
+#   # no intercept or constant term in cointegration
+#   ecdet = "none", 
+#   # lag order
+#   K = 2
+# )
+# summary(high_level_johansen)
+
+vecm_high <- urca::ca.jo(
+  x = high_level, 
+  ecdet = "none", 
+  type  = "eigen", 
+  K = 2, 
+  spec = "transitory",
+  dumvar = NULL
+)
+summary(vecm_high)
+
+vecm_middle <- urca::ca.jo(
+  x = middle_level, 
+  ecdet = "none", 
+  type  = "eigen", 
+  K = 2, 
+  spec = "transitory",
+  dumvar = NULL
+)
+summary(vecm_middle)
+
+vecm_low <- urca::ca.jo(
+  x = low_level, 
+  ecdet = "none", 
+  type  = "eigen", 
+  K = 2, 
+  spec = "transitory",
+  dumvar = NULL
+)
+summary(vecm_low)
+
+# vecm_high <- tsDyn::VECM(high_level_johansen, lag = 2, r = 5, estim = "ML")
+# vecm_middle <- tsDyn::VECM(middle_level, lag = 2, r = 4, estim = "ML")
+# vecm_low <- tsDyn::VECM(low_level, lag = 2, r = 4, estim = "ML")
+
+# convert to VAR models
+var_high <- vars::vec2var(vecm_high, r = 5)
+var_middle <- vars::vec2var(vecm_middle, r = 4)
+var_low <- vars::vec2var(vecm_low, r = 4)
+
+# GC analysis
+bruceR::granger_causality(var_high) # does not work
+gc_high_to_middle <- causality(vecm_high, cause = vecm_middle) # does not work
+
+
+
+# SVAR model --------------------------------------------------------------
+
+# create the VAR model
+VAR_model_sample_trial <- vars::VAR(LFP_sample_trial, type = "const", p = 1)
+
+K <- ncol(LFP_sample_trial)
+Amat <- diag(K)
+# Ensure the matrix is lower triangular for Cholesky
+Amat[upper.tri(Amat)] <- NA
+
+# SVAR model
+SVAR_model_sample_trial <- vars::SVAR(
+  x = VAR_model_sample_trial,
+  Amat = Amat
+) # not converging
 
 
 
@@ -274,6 +410,7 @@ legend(
 GC_analysis <- function(LFP, lag_order) {
   
   num_trials <- length(LFP)
+  num_channels <- unique(lengths(LFP))
   
   # prepare matrix for results
   combinations <- matrix(nrow = 15 * 15 - 15, ncol = 2)
@@ -292,6 +429,13 @@ GC_analysis <- function(LFP, lag_order) {
   p_values_trials <- matrix(nrow = 15 * 15 - 15, ncol = num_trials)
   GC_p_values <- cbind(combinations, p_values_trials)
   colnames(GC_p_values) <- c("influencing_ch", "influenced_ch", paste0("trial_", 1:num_trials, "_p_value"))
+  
+  adj_sum_square_err <- matrix(nrow = num_trials, ncol = num_channels)
+  consistency <- rep(NA, num_trials)
+  # dw_VAR_test_res <- matrix(nrow = num_trials, ncol = num_channels)
+  portmanteu_test_res <- rep(NA, num_trials)
+  bg_test_res <- rep(NA, num_trials)
+  res <- list()
 
   for (i in 1:num_trials) {
     
@@ -301,6 +445,14 @@ GC_analysis <- function(LFP, lag_order) {
     
     # VAR model creation
     VAR_model_trial_i <- VAR(LFP_trial_i, type = "const", p = lag_order)
+    
+    # checks
+    adj_sum_square_err[i, ] <- calculate_adj_sum_square_err(VAR_model_trial_i)
+    consistency[i] <- check_consistency(VAR_model_trial_i)
+    # dw_VAR_test_res[i, ] <- dW_VAR_test(VAR_model_trial_i)
+    portmanteu_test_res[i] <- vars::serial.test(VAR_model_trial_i, type = "PT.adjusted")$serial$p.value
+    bg_test_res[i] <- vars::serial.test(VAR_model_trial_i, type = "BG")$serial$p.value
+    res[[i]] <- residuals(VAR_model_trial_i)
     
     # Granger causality
     GC <- granger_causality(VAR_model_trial_i)
@@ -318,29 +470,47 @@ GC_analysis <- function(LFP, lag_order) {
     
   }
   
-  return(GC_p_values)
+  return(list(
+    p_values = GC_p_values, 
+    adj_sum_square_err = adj_sum_square_err, 
+    consistency = consistency, 
+    # dw_VAR_test_res = dw_VAR_test_res,
+    portmanteu_test_res = portmanteu_test_res,
+    bg_test_res = bg_test_res,
+    res = res
+  ))
   
 }
 
 # GC analysis for some sample trials (making sure that the number of primed and unprimed trials is equal)
-num_samples <- 10
+num_samples <- 20
 set.seed(42)
 subset_trials_unprimed_ind <- sort(sample(unprimed_ind_hra, num_samples / 2))
 subset_trials_primed_ind <- sort(sample(primed_ind_hra, num_samples / 2))
 subset_trials_ind <- sort(c(subset_trials_unprimed_ind, subset_trials_primed_ind))
 start_time <- Sys.time()
-GC_p_values <- GC_analysis(LFP = LFP_stationary_hra[subset_trials_ind], lag_order = 1)
+GC_p_values <- GC_analysis(LFP = LFP_stationary_hra[subset_trials_ind], lag_order = 4)
 end_time <- Sys.time()
 end_time - start_time
 
 # estimation of time to run all (time in h)
 ((end_time - start_time) / num_samples * length(LFP_stationary_hra)) / 60 / 60 
 
+# checks
+GC_p_values$adj_sum_square_err
+GC_p_values$consistency
+GC_p_values$portmanteu_test_res
+GC_p_values$bg_test_res
+for (i in 1:num_samples) {
+  plot_residuals((GC_p_values$res[[i]])) 
+}
+par(mfrow = c(1, 1))
+
 # divide in primed and unprimed trials
 subset_unprimed_ind <- which(subset_trials_ind %in% unprimed_ind_hra)
 subset_primed_ind <- which(subset_trials_ind %in% primed_ind_hra)
-GC_p_values_unprimed <- GC_p_values[, c(1, 2, subset_unprimed_ind + 2)]
-GC_p_values_primed <- GC_p_values[, c(1, 2, subset_primed_ind + 2)]
+GC_p_values_unprimed <- GC_p_values$p_values[, c(1, 2, subset_unprimed_ind + 2)]
+GC_p_values_primed <- GC_p_values$p_values[, c(1, 2, subset_primed_ind + 2)]
 
 # calculate the percentage of significant GC values for each channel combi (primed and unprimed condition)
 percentage_sign_unprimed <- rowSums(GC_p_values_unprimed[, 3:ncol(GC_p_values_unprimed)] < 0.05) / 
@@ -449,51 +619,19 @@ plot_channel_influences(percentage_sign = percentage_sign)
 
 # Network Visualisation of GC Influences (Layer Levels) -------------------
 
-# prepare matrix with layer information and p values
-layer_influencing <- rep(NA, nrow(GC_p_values))
-layer_influencing[GC_p_values[, 1] %in% upper_channels] <- "upper"
-layer_influencing[GC_p_values[, 1] %in% middle_channels] <- "middle"
-layer_influencing[GC_p_values[, 1] %in% deep_channels] <- "deep"
-layer_influenced <- rep(NA, nrow(GC_p_values))
-layer_influenced[GC_p_values[, 2] %in% upper_channels] <- "upper"
-layer_influenced[GC_p_values[, 2] %in% middle_channels] <- "middle"
-layer_influenced[GC_p_values[, 2] %in% deep_channels] <- "deep"
-GC_p_values_layer_levels <- cbind(layer_influencing, layer_influenced, GC_p_values)
-GC_p_values_layer_levels <- as.data.frame(GC_causality_p_values_layer_levels)
-
-# calculate the percentage of significant GC combis
-percentage_sign <- cbind(
-  c("upper", "upper", "upper", "middle", "middle", "middle", "deep", "deep", "deep"),
-  c("upper", "middle", "deep", "upper", "middle", "deep", "upper", "middle", "deep")
-)
-percentage_sign_layer_level_unprimed <- rep(NA, nrow(percentage_sign))
-for (i in 1:nrow(percentage_sign)) {
-  ind <- GC_p_values_layer_levels[, 1] %in% percentage_sign[i, 1] & GC_p_values_layer_levels[, 2] %in% percentage_sign[i, 2]
-  p_values_layer_level <- GC_p_values_layer_levels[ind, ]$adj_p_values_F
-  percentage_sign_layer_level_unprimed[i] <- sum(p_values_layer_level < 0.05) / length(p_values_layer_level)
-}
-percentage_sign_layer_level_primed <- rep(NA, nrow(percentage_sign))
-for (i in 1:nrow(percentage_sign)) {
-  ind <- GC_p_values_layer_levels[, 1] %in% percentage_sign[i, 1] & GC_p_values_layer_levels[, 2] %in% percentage_sign[i, 2]
-  p_values_layer_level <- GC_p_values_layer_levels[ind, ]$adj_p_values_F
-  percentage_sign_layer_level_primed[i] <- sum(p_values_layer_level < 0.05) / length(p_values_layer_level)
-}
-percentage_sign <- cbind(percentage_sign, percentage_sign_layer_level_unprimed, percentage_sign_layer_level_primed)
-
-# put in a function
 transform_layer_levels <- function(GC_p_values) {
   
   # prepare matrix with layer information and p values
-  layer_influencing <- rep(NA, nrow(GC_p_values))
-  layer_influencing[GC_p_values[, 1] %in% upper_channels] <- "upper"
-  layer_influencing[GC_p_values[, 1] %in% middle_channels] <- "middle"
-  layer_influencing[GC_p_values[, 1] %in% deep_channels] <- "deep"
-  layer_influenced <- rep(NA, nrow(GC_p_values))
-  layer_influenced[GC_p_values[, 2] %in% upper_channels] <- "upper"
-  layer_influenced[GC_p_values[, 2] %in% middle_channels] <- "middle"
-  layer_influenced[GC_p_values[, 2] %in% deep_channels] <- "deep"
-  GC_p_values_layer_levels <- cbind(layer_influencing, layer_influenced, GC_p_values)
-  GC_p_values_layer_levels <- as.data.frame(GC_causality_p_values_layer_levels)
+  layer_influencing <- rep(NA, nrow(GC_p_values$p_values))
+  layer_influencing[GC_p_values$p_values[, 1] %in% upper_channels] <- "upper"
+  layer_influencing[GC_p_values$p_values[, 1] %in% middle_channels] <- "middle"
+  layer_influencing[GC_p_values$p_values[, 1] %in% deep_channels] <- "deep"
+  layer_influenced <- rep(NA, nrow(GC_p_values$p_values))
+  layer_influenced[GC_p_values$p_values[, 2] %in% upper_channels] <- "upper"
+  layer_influenced[GC_p_values$p_values[, 2] %in% middle_channels] <- "middle"
+  layer_influenced[GC_p_values$p_values[, 2] %in% deep_channels] <- "deep"
+  GC_p_values_layer_levels <- cbind(layer_influencing, layer_influenced)
+  GC_p_values_layer_levels <- as.data.frame(GC_p_values_layer_levels)
   
   # calculate the percentage of significant GC combis
   percentage_sign <- cbind(
@@ -503,60 +641,17 @@ transform_layer_levels <- function(GC_p_values) {
   percentage_sign_layer_level <- rep(NA, nrow(percentage_sign))
   for (i in 1:nrow(percentage_sign)) {
     ind <- GC_p_values_layer_levels[, 1] %in% percentage_sign[i, 1] & GC_p_values_layer_levels[, 2] %in% percentage_sign[i, 2]
-    p_values_layer_level <- GC_p_values_layer_levels[ind, ]$adj_p_values_F
-    percentage_sign_layer_level[i] <- sum(p_values_layer_level < 0.05) / length(p_values_layer_level)
+    p_values_layer_level <- GC_p_values$p_values[ind, 3:ncol(GC_p_values$p_values)]
+    percentage_sign_layer_level[i] <- sum(p_values_layer_level < 0.05) / (nrow(p_values_layer_level) * ncol(p_values_layer_level))
   }
+  
+  percentage_sign_layer_level <- cbind(percentage_sign, percentage_sign_layer_level)
   
   return(percentage_sign_layer_level)
   
 }
 
-# # plot the influences
-# plot_layer_influences <- function(percentage_sign) {
-#   
-#   # for header
-#   un_primed <- c(NA, NA, "Unprimed", "Primed")
-#   
-#   # for both primed and unprimed trials
-#   for (i in c(3, 4)) {
-#     
-#     # assign colours to vertices based on influence
-#     min_influence <- min(as.numeric(percentage_sign[, i]))
-#     max_influence <- max(as.numeric(percentage_sign[, i]))
-#     colour_range <- cm.colors(10) 
-#     influence_colours <- colour_range[cut(
-#       as.numeric(percentage_sign[, i]),
-#       breaks = seq(min_influence, max_influence, length.out = length(colour_range) - 1),
-#       include.lowest = TRUE
-#     )]
-#     
-#     # plot the network with coloured nodes based on influence
-#     plot(
-#       graph_from_data_frame(percentage_sign[, 1:2], directed = TRUE),
-#       layout = layout.circle,
-#       vertex.label.cex = 1.5,
-#       vertex.size = 30,
-#       edge.arrow.size = 0.5,
-#       edge.width = 3,
-#       edge.color = influence_colours,
-#       edge.curved = rep(0.1, nrow(percentage_sign)),
-#       vertex.color = "white",
-#       main = paste0("GC Relationships Between Cortical Layers for a Subset of ", un_primed[i], " Trials")
-#     )
-#     legend(
-#       "bottomright",
-#       legend = c("Smaller Influence", "Bigger Influence"),
-#       col = c(colour_range[1], colour_range[length(colour_range)]),
-#       lty = 1,
-#       lwd = 2,
-#       cex = 0.8
-#     )
-#     
-#   }
-#   
-# }
-# 
-# plot_layer_influences(percentage_sign = percentage_sign)
+percentage_sign_layer_level <- transform_layer_levels(GC_p_values)
 
 # plot the influences (unprimed, primed separate)
 plot_layer_influences <- function(percentage_sign, un_primed) {
@@ -597,6 +692,8 @@ plot_layer_influences <- function(percentage_sign, un_primed) {
   
 }
 
+plot_layer_influences(percentage_sign = percentage_sign_layer_level, un_primed = "")
+
 
 
 # GC Analysis on Windowed Data --------------------------------------------
@@ -606,9 +703,6 @@ plot_layer_influences <- function(percentage_sign, un_primed) {
 # (for unequal lengths, i.e., lists)
 
 library(MARSS)
-
-LFP_sample_trial <- do.call(cbind, LFP_stationary[[1]])
-dim(LFP_sample_trial) # time, channel
 
 window_size <- 50  # in milliseconds
 overlap <- 25  # overlap between consecutive windows (adjust as needed)
@@ -647,7 +741,7 @@ sum(p_values < 0.05) / length(p_values)
 # as comparison (stationarity before)
 p_values <- rep(NA, ncol(LFP_sample_trial))
 for (i in 1:ncol(LFP_sample_trial)) {
-  p_values[i] <- tseries::adf.test(LFP_sample_trial[i, ])$p.value
+  p_values[i] <- tseries::adf.test(LFP_sample_trial[, i])$p.value
 }
 sum(p_values < 0.05) / length(p_values)
 
