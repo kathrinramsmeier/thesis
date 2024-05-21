@@ -89,7 +89,6 @@ LFP_stationary <- transform_stationary(
   sampling_rate = sampling_rate,
   print_remaining_non_stationary = FALSE
 )
-LFP_stationary[1:3, 1:3, 1:3]
 
 # check stationarity
 adf_result_notch_filtered <- adf_stationarity_test(LFP = LFP_stationary)
@@ -114,10 +113,10 @@ setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/stationarity")
 saveRDS(LFP_stationary, paste0(session, "_LFP_stationary.Rds"))
 saveRDS(LFP_stationary_hra, paste0(session, "_LFP_stationary_hra.Rds"))
 
-# load stationary LFPs
-setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/stationarity")
-LFP_stationary <- readRDS(paste0(session, "_LFP_stationary.Rds"))
-LFP_stationary_hra <- readRDS(paste0(session, "_LFP_stationary_hra.Rds"))
+# # load stationary LFPs
+# setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/stationarity")
+# LFP_stationary <- readRDS(paste0(session, "_LFP_stationary.Rds"))
+# LFP_stationary_hra <- readRDS(paste0(session, "_LFP_stationary_hra.Rds"))
 
 
 
@@ -127,13 +126,13 @@ LFP_stationary_hra <- readRDS(paste0(session, "_LFP_stationary_hra.Rds"))
 mean_bands_power_hanning_windowed_unprimed <- calculate_mean_bands_power(
   LFP = LFP_stationary, 
   un_primed_ind = unprimed_ind,
-  hanning_windowed = TRUE,
+  hanning_windowing = TRUE,
   frequency_bands = frequency_bands
 )
 mean_bands_power_unprimed <- calculate_mean_bands_power(
   LFP = LFP_stationary, 
   un_primed_ind = unprimed_ind,
-  hanning_windowed = FALSE,
+  hanning_windowing = FALSE,
   frequency_bands = frequency_bands
 )
 
@@ -141,13 +140,13 @@ mean_bands_power_unprimed <- calculate_mean_bands_power(
 mean_bands_power_hanning_windowed_primed <- calculate_mean_bands_power(
   LFP = LFP_stationary, 
   un_primed_ind = primed_ind,
-  hanning_windowed = TRUE,
+  hanning_windowing = TRUE,
   frequency_bands = frequency_bands
 )
 mean_bands_power_primed <- calculate_mean_bands_power(
   LFP = LFP_stationary, 
   un_primed_ind = primed_ind,
-  hanning_windowed = FALSE,
+  hanning_windowing = FALSE,
   frequency_bands = frequency_bands
 )
 

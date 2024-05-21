@@ -659,10 +659,9 @@ freqband_filtering <- function(LFP_trial, frequency_bands, sampling_rate, filter
 }
 
 # calculate coherence between two signals
-# calculate coherence between two signals
 calculate_coherence <- function(LFP_trial_1_freqband_filtered, LFP_trial_2_freqband_filtered, meaned) {
   
-  coherences <- matrix(nrow = 9, ncol = ncol(LFP_trial_1_freqband_filtered))
+  coherences <- list()
   
   # loop over all frequency bands
   for (i in 1:ncol(LFP_trial_1_freqband_filtered)) {
@@ -677,17 +676,14 @@ calculate_coherence <- function(LFP_trial_1_freqband_filtered, LFP_trial_2_freqb
     asd_2 <- gsignal::cpsd(cbind(LFP_trial_2_freqband_filtered[, i], LFP_trial_2_freqband_filtered[, i]))$cross
     
     # coherence
-    coherences[, i] <- csd_magnitudes^2 / (asd_1 * asd_2)
+    coherences[[i]] <- as.numeric(csd_magnitudes^2 / (asd_1 * asd_2))
     
   }
   
   # mean coherence in each frequency band !!!! need to check if that is plausible to do !!!!
   if(meaned) {
-    coherences <- colMeans(coherences)
+    coherences <- unlist(lapply(freqband_coherences_sample_LFPs, mean))
     names(coherences) <- names(frequency_bands)
-    
-  } else {
-    colnames(coherences) <- names(frequency_bands)
   }
   
   return(coherences)
@@ -873,9 +869,91 @@ calculate_PLV_PLI_PPC_hat <- function(LFP, un_primed_ind, frequency_bands, sampl
 
 # Granger Causality Analysis ----------------------------------------------
 
+# from Seth et. al.
+
+# 1.) note the amount of variance accounted for by the VAR model in terms of the adjusted sum-square-error
+calculate_adj_sum_square_err <- function(VAR_model) {
+  
+  residuals <- residuals(VAR_model)
+  lags <- VAR_model$p
+  
+  # Calculate residual sum of squares for each variable
+  RSS <- apply(residuals, 1, function(x) sum(x^2))
+  
+  n_obs <- dim(VAR_model$y)[1]
+  n_var <- dim(VAR_model$y)[2]
+  
+  df_error <- (n_obs - lags) - (n_var * lags)
+  df_total <- (n_obs - lags)
+  
+  rss_adj <- numeric(n_var)
+  
+  for (i in 1:n_var) {
+    xvec <- VAR_model$y[(lags + 1):n_obs, i]
+    rss2 <- sum(xvec^2)
+    rss_adj[i] <- 1 - ((RSS[i] / df_error) / (rss2 / df_total))
+  }
+  
+  return(rss_adj)
+  
+}
+
+# 2.) checking the VAR model's consistency (Code from the matlab GCCA toolbox converted into R)
+check_consistency <- function(VAR_model) {
+  
+  VAR_model_values <- VAR_model$datamat[, 1:15]
+  residuals <- residuals(VAR_model)
+  
+  predictions <- as.matrix(as.matrix(VAR_model_values) - as.matrix(residuals))
+  
+  VAR_model_values <- as.matrix(VAR_model_values)
+  
+  # covariance estimates
+  R_r <- VAR_model_values %*% t(VAR_model_values)  
+  R_s <- predictions %*% t(predictions)   
+  
+  # compare matrix norms
+  cons <- 1 - norm(R_s - R_r, type = "F") / norm(R_r, type = "F") 
+  return(cons)
+  
+}
+
+# 3.) Durbin-Watson statistic
+dW_VAR_test <- function(VAR_model) {
+  d <- rep(NA, 15)
+  for (i in 1:15) {
+    string <- paste0("VAR_model$varresult$y", i)
+    coeff <- eval(parse(text = string))
+    d[i] <- lmtest::dwtest(coeff)$statistic
+  }
+  return(d)
+}
+
+# 4.) Portmanteau- and Breusch-Godfrey test (not mentioned in the paper)
+# H0: no autocorrelation in the residuals
+# Breusch, T . S. (1978), Testing for autocorrelation in dynamic linear models, Australian Economic Papers, 17: 334-355.
+# Godfrey, L. G. (1978), Testing for higher order serial correlation in regression equations when the regressors include lagged dependent variables, Econometrica, 46: 1303-1313.
+P_BG_test <- function(VAR_model) {
+  p_values <- rep(NA, 2)
+  names(p_values) <- c("Portmanteu", "Breusch-Godfrey")
+  p_values[1] <- vars::serial.test(VAR_model_sample_trial, lags.pt = 2, type = "PT.adjusted")$serial$p.value
+  p_values[2] <- vars::serial.test(VAR_model_sample_trial, type = "BG")$serial$p.value
+  return(p_values)
+}
+
+# 5.) investigate residuals (not mentioned in the paper)
+plot_residuals <- function(res) {
+  par(mfrow = c(3, 5))  
+  for (i in 1:15) {  
+    plot(res[, i], type = "p", xlab = "Time", ylab = "Residuals")
+  }
+  par(mfrow = c(1, 1))
+}
+
 GC_analysis <- function(LFP, lag_order) {
   
   num_trials <- length(LFP)
+  num_channels <- unique(lengths(LFP))
   
   # prepare matrix for results
   combinations <- matrix(nrow = 15 * 15 - 15, ncol = 2)
@@ -895,6 +973,13 @@ GC_analysis <- function(LFP, lag_order) {
   GC_p_values <- cbind(combinations, p_values_trials)
   colnames(GC_p_values) <- c("influencing_ch", "influenced_ch", paste0("trial_", 1:num_trials, "_p_value"))
   
+  adj_sum_square_err <- matrix(nrow = num_trials, ncol = num_channels)
+  consistency <- rep(NA, num_trials)
+  # dw_VAR_test_res <- matrix(nrow = num_trials, ncol = num_channels)
+  portmanteu_test_res <- rep(NA, num_trials)
+  bg_test_res <- rep(NA, num_trials)
+  res <- list()
+  
   for (i in 1:num_trials) {
     
     # extract trial i and transform into a matrix
@@ -903,6 +988,14 @@ GC_analysis <- function(LFP, lag_order) {
     
     # VAR model creation
     VAR_model_trial_i <- VAR(LFP_trial_i, type = "const", p = lag_order)
+    
+    # checks
+    adj_sum_square_err[i, ] <- calculate_adj_sum_square_err(VAR_model_trial_i)
+    consistency[i] <- check_consistency(VAR_model_trial_i)
+    # dw_VAR_test_res[i, ] <- dW_VAR_test(VAR_model_trial_i)
+    portmanteu_test_res[i] <- vars::serial.test(VAR_model_trial_i, type = "PT.adjusted")$serial$p.value
+    bg_test_res[i] <- vars::serial.test(VAR_model_trial_i, type = "BG")$serial$p.value
+    res[[i]] <- residuals(VAR_model_trial_i)
     
     # Granger causality
     GC <- granger_causality(VAR_model_trial_i)
@@ -920,7 +1013,15 @@ GC_analysis <- function(LFP, lag_order) {
     
   }
   
-  return(GC_p_values)
+  return(list(
+    p_values = GC_p_values, 
+    adj_sum_square_err = adj_sum_square_err, 
+    consistency = consistency, 
+    # dw_VAR_test_res = dw_VAR_test_res,
+    portmanteu_test_res = portmanteu_test_res,
+    bg_test_res = bg_test_res,
+    res = res
+  ))
   
 }
 
@@ -936,23 +1037,19 @@ calculate_GC_p_values <- function(LFP, un_primed_ind, lag_order) {
   
 }
 
-
-
-# Network Visualisation of GC Influences (Layer Levels) -------------------
-
 transform_layer_levels <- function(GC_p_values) {
   
   # prepare matrix with layer information and p values
-  layer_influencing <- rep(NA, nrow(GC_p_values))
-  layer_influencing[GC_p_values[, 1] %in% upper_channels] <- "upper"
-  layer_influencing[GC_p_values[, 1] %in% middle_channels] <- "middle"
-  layer_influencing[GC_p_values[, 1] %in% deep_channels] <- "deep"
-  layer_influenced <- rep(NA, nrow(GC_p_values))
-  layer_influenced[GC_p_values[, 2] %in% upper_channels] <- "upper"
-  layer_influenced[GC_p_values[, 2] %in% middle_channels] <- "middle"
-  layer_influenced[GC_p_values[, 2] %in% deep_channels] <- "deep"
-  GC_p_values_layer_levels <- cbind(layer_influencing, layer_influenced, GC_p_values)
-  GC_p_values_layer_levels <- as.data.frame(GC_causality_p_values_layer_levels)
+  layer_influencing <- rep(NA, nrow(GC_p_values$p_values))
+  layer_influencing[GC_p_values$p_values[, 1] %in% upper_channels] <- "upper"
+  layer_influencing[GC_p_values$p_values[, 1] %in% middle_channels] <- "middle"
+  layer_influencing[GC_p_values$p_values[, 1] %in% deep_channels] <- "deep"
+  layer_influenced <- rep(NA, nrow(GC_p_values$p_values))
+  layer_influenced[GC_p_values$p_values[, 2] %in% upper_channels] <- "upper"
+  layer_influenced[GC_p_values$p_values[, 2] %in% middle_channels] <- "middle"
+  layer_influenced[GC_p_values$p_values[, 2] %in% deep_channels] <- "deep"
+  GC_p_values_layer_levels <- cbind(layer_influencing, layer_influenced)
+  GC_p_values_layer_levels <- as.data.frame(GC_p_values_layer_levels)
   
   # calculate the percentage of significant GC combis
   percentage_sign <- cbind(
@@ -962,13 +1059,17 @@ transform_layer_levels <- function(GC_p_values) {
   percentage_sign_layer_level <- rep(NA, nrow(percentage_sign))
   for (i in 1:nrow(percentage_sign)) {
     ind <- GC_p_values_layer_levels[, 1] %in% percentage_sign[i, 1] & GC_p_values_layer_levels[, 2] %in% percentage_sign[i, 2]
-    p_values_layer_level <- GC_p_values_layer_levels[ind, ]$adj_p_values_F
-    percentage_sign_layer_level[i] <- sum(p_values_layer_level < 0.05) / length(p_values_layer_level)
+    p_values_layer_level <- GC_p_values$p_values[ind, 3:ncol(GC_p_values$p_values)]
+    percentage_sign_layer_level[i] <- sum(p_values_layer_level < 0.05) / (nrow(p_values_layer_level) * ncol(p_values_layer_level))
   }
+  
+  percentage_sign_layer_level <- cbind(percentage_sign, percentage_sign_layer_level)
   
   return(percentage_sign_layer_level)
   
 }
+
+percentage_sign_layer_level <- transform_layer_levels(GC_p_values)
 
 # plot the influences (unprimed, primed separate)
 plot_layer_influences <- function(percentage_sign, un_primed) {
