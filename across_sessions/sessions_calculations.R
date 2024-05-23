@@ -5,7 +5,7 @@ rm(list = c(
   "LFP_stationary", "LFP_stationary_hra"
 ))
 
-session <- "C190127"
+session <- "C190201"
 
 
 
@@ -96,11 +96,11 @@ adf_result_notch_filtered
 
 # remove remaining non-stationary trials (for GC analysis)
 LFP_stationary_hra <- exclude_remaining_non_stationary(LFP = LFP_stationary)
-length(LFP_stationary_hra)
+length(LFP_stationary) - length(LFP_stationary_hra)
 
 # filter all primed and unprimed trials (indices)
-primed_ind <- task$trial_number_count[task$block_trial_count %in% c(1, 2)]
-unprimed_ind <- task$trial_number_count[!(task$block_trial_count %in% c(1, 2))]
+unprimed_ind <- task$trial_number_count[task$block_trial_count %in% c(1, 2)]
+primed_ind <- task$trial_number_count[!(task$block_trial_count %in% c(1, 2))]
 
 # adapt unprimed and primed ind to removed trials
 unprimed_ind_hra <- unprimed_ind[which(unprimed_ind %in% c(1:length(LFP_stationary_hra)))]
@@ -117,6 +117,16 @@ saveRDS(LFP_stationary_hra, paste0(session, "_LFP_stationary_hra.Rds"))
 # setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/stationarity")
 # LFP_stationary <- readRDS(paste0(session, "_LFP_stationary.Rds"))
 # LFP_stationary_hra <- readRDS(paste0(session, "_LFP_stationary_hra.Rds"))
+
+# save (un)primed indices
+un_primed_indices <- list(
+  "unprimed_ind" = unprimed_ind,
+  "primed_ind" = primed_ind,
+  "unprimed_ind_hra" = unprimed_ind_hra,
+  "primed_ind_hra" = primed_ind_hra
+)
+setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/stationarity")
+saveRDS(un_primed_indices, paste0(session, "_un_primed_indices.Rds"))
 
 
 
