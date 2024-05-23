@@ -113,7 +113,7 @@ plot_residuals <- function(res) {
 
 
 head(residuals(VAR_model_sample_trial))
-AIC(VAR_model_sample_trial)
+BIC(VAR_model_sample_trial)
 calculate_adj_sum_square_err(VAR_model = VAR_model_sample_trial) # values less then 0.3 signify that the VAR model may not have captured the data adequately
 check_consistency(VAR_model = VAR_model_sample_trial) # values below 80% may give cause fo concern
 dW_VAR_test(VAR_model = VAR_model_sample_trial) # if d < 1 there may be cause for concern
@@ -278,6 +278,84 @@ GC_causality_p_values <- cbind(combinations, adj_p_values_F, adj_p_values_Chisq)
 sign_ind <- which((adj_p_values_F < 0.05) &  (adj_p_values_Chisq < 0.05))
 sign_causalities <- GC_causality_p_values[sign_ind, c(1, 2)]
 sign_causalities <- c(t(sign_causalities))
+
+
+
+# Conditional Granger Causality -------------------------------------------
+
+GC_p_values_sample_trial <- cbind(combinations, adj_p_values_F)
+
+# prepare matrix with layer information and p values
+layer_influencing <- rep(NA, length(adj_p_values_F))
+layer_influencing[GC_p_values_sample_trial[, 1] %in% upper_channels] <- "upper"
+layer_influencing[GC_p_values_sample_trial[, 1] %in% middle_channels] <- "middle"
+layer_influencing[GC_p_values_sample_trial[, 1] %in% deep_channels] <- "deep"
+layer_influenced <- rep(NA, nrow(GC_p_values_sample_trial))
+layer_influenced[GC_p_values_sample_trial[, 2] %in% upper_channels] <- "upper"
+layer_influenced[GC_p_values_sample_trial[, 2] %in% middle_channels] <- "middle"
+layer_influenced[GC_p_values_sample_trial[, 2] %in% deep_channels] <- "deep"
+GC_p_values_layer_levels <- cbind(layer_influencing, layer_influenced)
+GC_p_values_layer_levels <- as.data.frame(GC_p_values_layer_levels)
+
+# calculate the percentage of significant GC combis
+percentage_sign <- cbind(
+  c("upper", "upper", "upper", "middle", "middle", "middle", "deep", "deep", "deep"),
+  c("upper", "middle", "deep", "upper", "middle", "deep", "upper", "middle", "deep")
+)
+percentage_sign_layer_level <- rep(NA, nrow(percentage_sign))
+for (i in 1:nrow(percentage_sign)) {
+  ind <- GC_p_values_layer_levels[, 1] %in% percentage_sign[i, 1] & GC_p_values_layer_levels[, 2] %in% percentage_sign[i, 2]
+  p_values_layer_level <- adj_p_values_F[ind]
+  percentage_sign_layer_level[i] <- sum(p_values_layer_level < 0.05) / length(p_values_layer_level)
+}
+
+percentage_sign_layer_level <- cbind(percentage_sign, percentage_sign_layer_level)
+percentage_sign_layer_level
+
+causal_signals <- LFP_sample_trial[, deep_channels]
+dependent_signals <- LFP_sample_trial[, middle_channels]
+conditioning_signals <- LFP_sample_trial[, upper_channels]
+
+cond_GC_analysis <- condGranger(
+  data = cbind(causal_signals, dependent_signals, conditioning_signals),
+  # number of signals causing the dependent signals
+  nx = 3,
+  # number of signals that are Granger caused
+  ny = 3,
+  # autoregressive order (how many past observations to include)
+  order = 3
+)
+cond_GC_analysis$prob
+# seems to be suspicious (all are always significant, also the package that contained this function was removed from CRAN)
+
+
+
+# other approach:
+# for grangers::Granger.conditional(), only 1 ts can be provided so useless in my case
+
+
+
+# Non-linear Granger Causality --------------------------------------------
+
+combis <- matrix(NA, nrow = 15, ncol = 15)
+colnames(combis) <- rownames(combis) <- 1:15
+
+for (i in 1:15) {
+  for (j in 1:15) {
+    GC_nonlinear <- NlinTS::nlin_causality.test(
+      ts1 = LFP_sample_trial[, i], 
+      ts2 = LFP_sample_trial[, j], 
+      lag = 3,
+      # amount and size(s) of the hidden layer(s) fo the univariate model
+      LayersUniv = c(5),
+      # amount and size(s) of the hidden layer(s) fo the bivariate model
+      LayersBiv = c(5, 5),
+      seed = 42
+    )
+    combis[i, j] <- GC_nonlinear$pvalue
+  }
+}
+combis
 
 
 
