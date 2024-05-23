@@ -551,6 +551,7 @@ calculate_mean_bands_power <- function(LFP, un_primed_ind, hanning_windowing, fr
       electrode_channel = i
     )
     rel_bands_power_un_primed[i, ] <- apply(rel_bands_power_un_primed_ch, 2, mean)
+    print(paste("Channek", i, "of", num_channels, "completed."))
   }
   
   return(rel_bands_power_un_primed)
@@ -682,7 +683,7 @@ calculate_coherence <- function(LFP_trial_1_freqband_filtered, LFP_trial_2_freqb
   
   # mean coherence in each frequency band !!!! need to check if that is plausible to do !!!!
   if(meaned) {
-    coherences <- unlist(lapply(freqband_coherences_sample_LFPs, mean))
+    coherences <- unlist(lapply(coherences, mean))
     names(coherences) <- names(frequency_bands)
   }
   
@@ -732,6 +733,8 @@ calculate_avg_coherence <- function(LFP, un_primed_ind, frequency_bands, samplin
     # calculate mean coherence over all trials (need to think again if that is plausible to do!!!)
     sum_coherences <- sum_coherences + coherences
     avg_coherences <- sum_coherences / length(LFP_trials)
+    
+    print(paste("Trial", k, "of", num_trials, "completed."))
     
   }
   
@@ -858,6 +861,8 @@ calculate_PLV_PLI_PPC_hat <- function(LFP, un_primed_ind, frequency_bands, sampl
     # see https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3674231/#:~:text=PLV%20can%20therefore%20be%20viewed,each%20scaling%20of%20the%20wavelet.
     sum_results <- sum_results + results
     avg_results <- sum_results / length(LFP_trials)
+    
+    print(paste("Trial", k, "of", num_trials, "completed."))
     
   }
   
@@ -1069,7 +1074,78 @@ transform_layer_levels <- function(GC_p_values) {
   
 }
 
-percentage_sign_layer_level <- transform_layer_levels(GC_p_values)
+# plot the influences (unprimed, primed separate)
+plot_layer_influences <- function(percentage_sign, un_primed) {
+  
+  # assign colours to vertices based on influence
+  min_influence <- min(as.numeric(percentage_sign[, 3]))
+  max_influence <- max(as.numeric(percentage_sign[, 3]))
+  colour_range <- cm.colors(10)
+  influence_colours <- colour_range[cut(
+    as.numeric(percentage_sign[, 3]),
+    breaks = seq(min_influence, max_influence, length.out = length(colour_range) - 1),
+    include.lowest = TRUE
+  )]
+  
+  # plot the network with coloured nodes based on influence
+  plot(
+    graph_from_data_frame(percentage_sign[, 1:2], directed = TRUE),
+    layout = layout.circle,
+    vertex.label.cex = 1.5,
+    vertex.size = 30,
+    edge.arrow.size = 0.5,
+    edge.width = 3,
+    edge.color = influence_colours,
+    edge.curved = rep(0.1, nrow(percentage_sign)),
+    vertex.color = "white",
+    main = paste0(
+      "GC Relationships Between Cortical Layers for a Subset of ", un_primed, " Trials"
+    )
+  )
+  legend(
+    "bottomright",
+    legend = c("Smaller Influence", "Bigger Influence"),
+    col = c(colour_range[1], colour_range[length(colour_range)]),
+    lty = 1,
+    lwd = 2,
+    cex = 0.8
+  )
+  
+}
+
+
+
+# Network Visualisation of GC Influences (Layer Levels) -------------------
+
+transform_layer_levels <- function(GC_p_values) {
+  
+  # prepare matrix with layer information and p values
+  layer_influencing <- rep(NA, nrow(GC_p_values))
+  layer_influencing[GC_p_values[, 1] %in% upper_channels] <- "upper"
+  layer_influencing[GC_p_values[, 1] %in% middle_channels] <- "middle"
+  layer_influencing[GC_p_values[, 1] %in% deep_channels] <- "deep"
+  layer_influenced <- rep(NA, nrow(GC_p_values))
+  layer_influenced[GC_p_values[, 2] %in% upper_channels] <- "upper"
+  layer_influenced[GC_p_values[, 2] %in% middle_channels] <- "middle"
+  layer_influenced[GC_p_values[, 2] %in% deep_channels] <- "deep"
+  GC_p_values_layer_levels <- cbind(layer_influencing, layer_influenced, GC_p_values)
+  GC_p_values_layer_levels <- as.data.frame(GC_causality_p_values_layer_levels)
+  
+  # calculate the percentage of significant GC combis
+  percentage_sign <- cbind(
+    c("upper", "upper", "upper", "middle", "middle", "middle", "deep", "deep", "deep"),
+    c("upper", "middle", "deep", "upper", "middle", "deep", "upper", "middle", "deep")
+  )
+  percentage_sign_layer_level <- rep(NA, nrow(percentage_sign))
+  for (i in 1:nrow(percentage_sign)) {
+    ind <- GC_p_values_layer_levels[, 1] %in% percentage_sign[i, 1] & GC_p_values_layer_levels[, 2] %in% percentage_sign[i, 2]
+    p_values_layer_level <- GC_p_values_layer_levels[ind, ]$adj_p_values_F
+    percentage_sign_layer_level[i] <- sum(p_values_layer_level < 0.05) / length(p_values_layer_level)
+  }
+  
+  return(percentage_sign_layer_level)
+  
+}
 
 # plot the influences (unprimed, primed separate)
 plot_layer_influences <- function(percentage_sign, un_primed) {

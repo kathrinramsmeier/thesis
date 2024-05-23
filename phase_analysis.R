@@ -89,7 +89,7 @@ calculate_coherence <- function(LFP_trial_1_freqband_filtered, LFP_trial_2_freqb
   
   # mean coherence in each frequency band !!!! need to check if that is plausible to do !!!!
   if(meaned) {
-    coherences <- unlist(lapply(freqband_coherences_sample_LFPs, mean))
+    coherences <- unlist(lapply(coherences, mean))
     names(coherences) <- names(frequency_bands)
   }
   
@@ -292,7 +292,7 @@ calculate_avg_coherence <- function(LFP, un_primed_ind, frequency_bands, samplin
     sum_coherences <- sum_coherences + coherences
     avg_coherences <- sum_coherences / length(LFP_trials)
     
-    print(paste("Trial", k, "done from", num_trials))
+    print(paste("Trial", k, "of", num_trials, "completed."))
     
   }
   
@@ -543,6 +543,8 @@ calculate_PLV_PLI_PPC_hat <- function(LFP, un_primed_ind, frequency_bands, sampl
     # see https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3674231/#:~:text=PLV%20can%20therefore%20be%20viewed,each%20scaling%20of%20the%20wavelet.
     sum_results <- sum_results + results
     avg_results <- sum_results / length(LFP_trials)
+    
+    print(paste("Trial", k, "of", num_trials, "completed."))
     
   }
   
