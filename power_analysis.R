@@ -297,7 +297,7 @@ calculate_mean_bands_power <- function(LFP, un_primed_ind, hanning_windowing, fr
       electrode_channel = i
     )
     rel_bands_power_un_primed[i, ] <- apply(rel_bands_power_un_primed_ch, 2, mean)
-    print(paste("Channek", i, "of", num_channels, "completed."))
+    print(paste("Channel", i, "of", num_channels, "completed."))
   }
   
   return(rel_bands_power_un_primed)

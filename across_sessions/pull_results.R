@@ -1,9 +1,17 @@
 
-num_sessions <- 29
+num_sessions <- 27
 num_channels <- 15
 num_frequency_bands <- 6
 
-sessions <- c("C190127")
+sessions <- c(
+  "C190127", "c190128", 
+  # "C190201",
+  "C190203", "C190204", "C190206", "C190207",
+  # "C190208",
+  "C190213", "C190218", "C190219", "C190220", "C190222", "C190223", 
+  "C190225", "C190307", "C190313", "C190320", "C190322", "C190327", "C190416", 
+  "H190608", "H190612", "H190620", "H190621", "H190625", "H190626", "H190627", "H190629"
+)
 
 
 
@@ -35,6 +43,9 @@ colnames(mean_bands_power_primed_all_sessions_avg) <- names(frequency_bands)
 rownames(mean_bands_power_unprimed_all_sessions_avg) <- 1:num_channels
 rownames(mean_bands_power_primed_all_sessions_avg) <- 1:num_channels
 
+mean_bands_power_unprimed_all_sessions_avg <- mean_bands_power_unprimed_all_sessions_avg[, 2:5]
+mean_bands_power_primed_all_sessions_avg <- mean_bands_power_primed_all_sessions_avg[, 2:5]
+
 plot_power_heatmaps(
   mean_bands_power_unprimed = mean_bands_power_unprimed_all_sessions_avg, 
   mean_bands_power_primed = mean_bands_power_primed_all_sessions_avg, 
@@ -52,9 +63,12 @@ plot_power(
   mean_bands_power_primed = mean_bands_power_primed_all_sessions_avg
 ) # primed is dark blue, unprimed light blue
 
+mean_bands_power_unprimed_all_sessions_avg
+mean_bands_power_primed_all_sessions_avg
 
 
-# Phase Analysis ----------------------------------------------------------
+
+# Coherence and Phase Analysis --------------------------------------------
 
 coherence_hat_unprimed_all_sessions <-
   coherence_hat_primed_all_sessions <- 
