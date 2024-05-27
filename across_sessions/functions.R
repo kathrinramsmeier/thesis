@@ -639,8 +639,8 @@ freqband_filtering <- function(LFP_trial, frequency_bands, sampling_rate, filter
   
   nyquist_freq <- sampling_rate / 2
   
-  # avoid numerical problem
-  frequency_bands[[1]][1] <- 0.01
+  # avoid numerical problem (only needed when all frequency bands are examined)
+  # frequency_bands[[1]][1] <- 0.01
   
   # loop over all frequency bands
   for (i in 1:length(frequency_bands)) {
@@ -660,7 +660,7 @@ freqband_filtering <- function(LFP_trial, frequency_bands, sampling_rate, filter
 }
 
 # calculate coherence between two signals
-calculate_coherence <- function(LFP_trial_1_freqband_filtered, LFP_trial_2_freqband_filtered, meaned) {
+calculate_coherence <- function(LFP_trial_1_freqband_filtered, LFP_trial_2_freqband_filtered, meaned, frequency_bands) {
   
   coherences <- list()
   
@@ -694,15 +694,15 @@ calculate_coherence <- function(LFP_trial_1_freqband_filtered, LFP_trial_2_freqb
 # compute coherence between the channels in each frequency band for all primed and unprimed trials
 calculate_avg_coherence <- function(LFP, un_primed_ind, frequency_bands, sampling_rate, filter_order) {
   
-  num_channels <- unique(lengths(LFP))
-  num_trials <- length(LFP)
-  
   # filter either primed or unprimed trials
   LFP_trials <- LFP[un_primed_ind]
   
+  num_channels <- unique(lengths(LFP_trials))
+  num_trials <- length(LFP_trials)
+  
   # prepare matrices to store results
   coherences <- array(dim = c(num_channels, num_channels, length(frequency_bands)))
-  sum_coherences <- array(0 ,dim = c(num_channels, num_channels, length(frequency_bands)))
+  sum_coherences <- array(0, dim = c(num_channels, num_channels, length(frequency_bands)))
   
   # loop over all trials
   for (k in 1:num_trials) {
@@ -711,13 +711,13 @@ calculate_avg_coherence <- function(LFP, un_primed_ind, frequency_bands, samplin
     for (i in 1:num_channels) {
       for (j in 1:num_channels) {
         trial_freqband_filtered_1 <- freqband_filtering(
-          LFP_trial = as.numeric(LFP[[k]][[i]]), 
+          LFP_trial = as.numeric(LFP_trials[[k]][[i]]), 
           frequency_bands = frequency_bands, 
           sampling_rate = sampling_rate,
           filter_order = filter_order
         )
         trial_freqband_filtered_2 <- freqband_filtering(
-          LFP_trial = as.numeric(LFP[[k]][[j]]), 
+          LFP_trial = as.numeric(LFP_trials[[k]][[j]]), 
           frequency_bands = frequency_bands, 
           sampling_rate = sampling_rate,
           filter_order = filter_order
@@ -725,19 +725,20 @@ calculate_avg_coherence <- function(LFP, un_primed_ind, frequency_bands, samplin
         coherences[i, j, ] <- calculate_coherence(
           LFP_trial_1_freqband_filtered = trial_freqband_filtered_1, 
           LFP_trial_2_freqband_filtered = trial_freqband_filtered_2,
-          meaned = TRUE
+          meaned = TRUE,
+          frequency_bands = frequency_bands
         )
       }
     }
     
-    # calculate mean coherence over all trials (need to think again if that is plausible to do!!!)
     sum_coherences <- sum_coherences + coherences
-    avg_coherences <- sum_coherences / length(LFP_trials)
     
     print(paste("Trial", k, "of", num_trials, "completed."))
     
   }
   
+  # calculate mean coherence over all trials (need to think again if that is plausible to do!!!)
+  avg_coherences <- sum_coherences / num_trials
   return(avg_coherences)
   
 }

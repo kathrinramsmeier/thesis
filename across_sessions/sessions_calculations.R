@@ -5,7 +5,17 @@ rm(list = c(
   "LFP_stationary", "LFP_stationary_hra"
 ))
 
-session <- "C190201"
+# session <- "C190127"
+
+sessions <- c(
+  "C190127" #, "c190128", 
+  # # "C190201",
+  # "C190203", "C190204", "C190206", "C190207",
+  # # "C190208",
+  # "C190213", "C190218", "C190219", "C190220", "C190222", "C190223", 
+  # "C190225", "C190307", "C190313", "C190320", "C190322", "C190327", "C190416", 
+  # "H190608", "H190612", "H190620", "H190621", "H190625", "H190626", "H190627", "H190629"
+)
 
 
 
@@ -128,6 +138,14 @@ un_primed_indices <- list(
 setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/stationarity")
 saveRDS(un_primed_indices, paste0(session, "_un_primed_indices.Rds"))
 
+# # load (un)primed indices
+# setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/stationarity")
+# un_primed_indices <- readRDS(paste0(session, "_un_primed_indices.Rds"))
+# unprimed_ind <- un_primed_indices$unprimed_ind
+# primed_ind <- un_primed_indices$primed_ind
+# unprimed_ind_hra <- un_primed_indices$unprimed_ind_hra
+# primed_ind_hra <- un_primed_indices$primed_ind_hra
+
 
 
 # Power Analysis ----------------------------------------------------------
@@ -192,31 +210,53 @@ saveRDS(mean_bands_power_primed, paste0(session, "_mean_bands_power_primed.Rds")
 
 
 
+# Coherence Analysis --------------------------------------------------------
+
+for (i in 1:length(sessions)) {
+  
+  session <- sessions[i]
+  
+  # load stationary LFPs
+  setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/stationarity")
+  LFP_stationary <- readRDS(paste0(session, "_LFP_stationary.Rds"))
+  
+  # load (un)primed indices
+  setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/stationarity")
+  un_primed_indices <- readRDS(paste0(session, "_un_primed_indices.Rds"))
+  unprimed_ind <- un_primed_indices$unprimed_ind
+  primed_ind <- un_primed_indices$primed_ind
+  
+  sampling_rate <- 1017.253
+  
+  # calculate coherence_hat between the channels for all frequency bands for unprimed trials
+  coherence_hat_unprimed <- calculate_avg_coherence(
+    LFP = LFP_stationary,
+    un_primed_ind = unprimed_ind,
+    frequency_bands = frequency_bands[2:5],
+    sampling_rate = sampling_rate, 
+    filter_order = 2
+  )
+  
+  setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/coherence/unprimed")
+  saveRDS(coherence_hat_unprimed, paste0(session, "_avg_coherence_unprimed.Rds"))
+  
+  # calculate coherence_hat between the channels for all frequency bands for primed trials
+  coherence_hat_primed <- calculate_avg_coherence(
+    LFP = LFP_stationary,
+    un_primed_ind = primed_ind,
+    frequency_bands = frequency_bands[2:5],
+    sampling_rate = sampling_rate, 
+    filter_order = 2
+  )
+  
+  setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/coherence/primed")
+  saveRDS(coherence_hat_primed, paste0(session, "_avg_coherence_primed.Rds"))
+  
+}
+
+
+
 # Phase Analysis ----------------------------------------------------------
-
-# calculate coherence_hat between the channels for all frequency bands for unprimed trials
-coherence_hat_unprimed <- calculate_avg_coherence(
-  LFP = LFP_stationary,
-  un_primed_ind = unprimed_ind,
-  frequency_bands = frequency_bands,
-  sampling_rate = sampling_rate, 
-  filter_order = 2
-)
-
-setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/coherence/unprimed")
-saveRDS(coherence_hat_unprimed, paste0(session, "_avg_coherence_unprimed.Rds"))
-
-# calculate coherence_hat between the channels for all frequency bands for primed trials
-coherence_hat_primed <- calculate_avg_coherence(
-  LFP = LFP_stationary,
-  un_primed_ind = primed_ind,
-  frequency_bands = frequency_bands,
-  sampling_rate = sampling_rate, 
-  filter_order = 2
-)
-
-setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/coherence/primed")
-saveRDS(coherence_hat_primed, paste0(session, "_avg_coherence_primed.Rds"))
 
 # calculate PLV between the channels for all frequency bands for unprimed trials
 PLV_unprimed <- calculate_PLV_PLI_PPC_hat(
