@@ -22,16 +22,18 @@ lines(sample_LFP_2, type = "l", col = "red")
 
 freqband_filtering <- function(LFP_trial, frequency_bands, sampling_rate, filter_order) {
   
-  LFP_freqband_filtered <- matrix(nrow = length(LFP_trial), ncol = length(frequency_bands))
+  num_freq_bands <- length(frequency_bands)
+  
+  LFP_freqband_filtered <- matrix(nrow = length(LFP_trial), ncol = num_freq_bands)
   colnames(LFP_freqband_filtered) <- names(frequency_bands)
   
   nyquist_freq <- sampling_rate / 2
   
   # avoid numerical problem (only needed when all frequency bands are examined)
-  # frequency_bands[[1]][1] <- 0.01
+  frequency_bands[[1]][1] <- 0.01
   
   # loop over all frequency bands
-  for (i in 1:length(frequency_bands)) {
+  for (i in 1:num_freq_bands) {
     
     freq_band <- c(frequency_bands[[i]][1], frequency_bands[[i]][2])
     
@@ -71,11 +73,13 @@ calculate_PLV_PLI_PPC <- function(LFP_trial_1_freqband_filtered, LFP_trial_2_fre
   
   stopifnot(method %in% c("PLV", "PLI", "PPC"))
   
-  result <- rep(NA, dim(LFP_trial_1_freqband_filtered)[2])
+  num_freq_bands <- dim(LFP_trial_1_freqband_filtered)[2]
+  
+  result <- rep(NA, num_freq_bands)
   names(result) <- colnames(LFP_trial_1_freqband_filtered)
   
   # loop over all frequency bands
-  for (i in 1:dim(LFP_trial_1_freqband_filtered)[2]) {
+  for (i in 1:num_freq_bands) {
     
     # Hilbert transform to get the analytical signal
     LFP_1_freqband_ht <- gsignal::hilbert(LFP_trial_1_freqband_filtered[, i])
@@ -97,17 +101,13 @@ calculate_PLV_PLI_PPC <- function(LFP_trial_1_freqband_filtered, LFP_trial_2_fre
     } else if (method == "PPC") { # check this again!!!!!
 
       N <- length(phase_diffs)
-      sum_of_dot_products <- 0
-      
-      # compute pairwise dot products
-      for (j in 1:(N - 1)) {
-        for (k in (j + 1):N) {
-          dot_product <- cos(phase_diffs)[j] * cos(phase_diffs)[k] + sin(phase_diffs)[j] * sin(phase_diffs)[k]
-          sum_of_dot_products <- sum_of_dot_products + dot_product
+      ppc_sum <- 0
+      for (j in 1:(N-1)) {
+        for (k in (j+1):N) {
+          ppc_sum <- ppc_sum + (cos(phase_diffs[j]) * cos(phase_diffs[k]) + sin(phase_diffs[j]) * sin(phase_diffs[k]))
         }
       }
-      
-      result[i] <- (2 / (N * (N - 1))) * sum_of_dot_products
+      result[i] <- (2 / (N * (N - 1))) * ppc_sum
       
     }
   }
@@ -204,18 +204,20 @@ freqband_PPC_sample_LFPs
 # compute PLV/PLI/PPC between the channels in each frequency band for all primed and unprimed trials
 calculate_PLV_PLI_PPC_hat <- function(LFP, un_primed_ind, frequency_bands, sampling_rate, filter_order, method) {
   
-  num_channels <- unique(lengths(LFP))
-  num_trials <- length(LFP)
-  
   # filter either primed or unprimed trials
   LFP_trials <- LFP[un_primed_ind]
   
+  num_channels <- unique(lengths(LFP_trials))
+  num_trials <- length(LFP_trials)
+  num_freq_bands <- length(frequency_bands)
+  
   # prepare matrices to store results
-  results <- array(dim = c(num_channels, num_channels, length(frequency_bands)))
-  sum_results <- array(0 ,dim = c(num_channels, num_channels, length(frequency_bands)))
+  sum_results <- array(0 ,dim = c(num_channels, num_channels, num_freq_bands))
   
   # loop over all trials
   for (k in 1:num_trials) {
+    
+    results <- array(dim = c(num_channels, num_channels, num_freq_bands))
     
     # PLV/PLI/PPC for trial i between each channel
     for (i in 1:num_channels) {
@@ -240,14 +242,15 @@ calculate_PLV_PLI_PPC_hat <- function(LFP, un_primed_ind, frequency_bands, sampl
       }
     }
     
-    # calculate mean PLV/PLI/PPC over all trials 
-    # see https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3674231/#:~:text=PLV%20can%20therefore%20be%20viewed,each%20scaling%20of%20the%20wavelet.
     sum_results <- sum_results + results
-    avg_results <- sum_results / length(LFP_trials)
     
     print(paste("Trial", k, "of", num_trials, "completed."))
     
   }
+  
+  # calculate mean PLV/PLI/PPC over all trials 
+  # see https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3674231/#:~:text=PLV%20can%20therefore%20be%20viewed,each%20scaling%20of%20the%20wavelet.
+  avg_results <- sum_results / length(LFP_trials)
   
   return(avg_results)
   
@@ -267,7 +270,7 @@ PLV_hat_test <- calculate_PLV_PLI_PPC_hat(
 dim(PLV_hat_test) # dim 1 and 2: channel x channel combi, dim 3: frequency bands
 PLV_hat_test[1:3, 1:3, 1:3]
 
-plot_heatmap(result_array = PLV_hat_test, frequency_bands = frequency_bands)
+plot_heatmap(result_array = PLV_hat_test, frequency_bands = frequency_bands, un_primed = "Unprimed")
 
 # calculate PLV between the channels for all frequency bands for unprimed trials
 PLV_hat_unprimed <- calculate_PLV_PLI_PPC_hat(

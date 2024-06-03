@@ -26,7 +26,7 @@ freqband_filtering <- function(LFP_trial, frequency_bands, sampling_rate, filter
   nyquist_freq <- sampling_rate / 2
   
   # avoid numerical problem (only needed when all frequency bands are examined)
-  # frequency_bands[[1]][1] <- 0.01
+  frequency_bands[[1]][1] <- 0.01
   
   # loop over all frequency bands
   for (i in 1:length(frequency_bands)) {
@@ -337,7 +337,7 @@ saveRDS(coherence_hat_unprimed, paste0(session, "avg_coherence_unprimed.Rds"))
 saveRDS(coherence_hat_primed, paste0(session, "avg_coherence_primed.Rds"))
 
 # plot the average coherence between the channels for the different frequency bands as heatmaps
-plot_heatmap <- function(result_array, frequency_bands) {
+plot_heatmap <- function(result_array, frequency_bands, un_primed) {
   
   # preparation of the data
   coherence_df <- as.data.frame(as.table(result_array))
@@ -345,18 +345,49 @@ plot_heatmap <- function(result_array, frequency_bands) {
   coherence_df$channel1 <- as.numeric(as.factor(coherence_df$channel1))
   coherence_df$channel2 <- as.numeric(as.factor(coherence_df$channel2))
   coherence_df$frequency_band <- factor(coherence_df$frequency_band)
-  levels(coherence_df$frequency_band) <- names(frequency_bands)
+  
+  plot_names <- rep(NA, length(frequency_bands))
+  for (i in 1:length(frequency_bands)) {
+    plot_names[i] <- paste0(names(frequency_bands[i]), " (", frequency_bands[[i]][1], " - ", frequency_bands[[i]][2], " Hz)")
+  }
+  levels(coherence_df$frequency_band) <- plot_names
   
   # heatmap plot
   ggplot(coherence_df, aes(x = channel1, y = channel2, fill = Coherence)) +
     geom_tile() +
     scale_fill_gradient(low = "white", high = "blue") + 
-    facet_wrap( ~ frequency_band, scales = "free") +  
-    labs(title = "Avg Coherence Between the Different Channels as a Function of Frequency Bands", x = "", y = "", fill = "Coherence") +
-    theme_minimal()
-  
+    facet_wrap(~ frequency_band, scales = "free") +  
+    labs(title = paste("Average Coherence Between the Different Channels in", un_primed, "Conditions"), x = "", y = "", fill = "Coherence") +
+    theme_minimal() +
+    theme(axis.text.x = element_blank(), axis.text.y = element_blank(), axis.ticks = element_blank())
 }
 
-plot_heatmap(result_array = avg_coherence_test, frequency_bands = frequency_bands)
-plot_heatmap(result_array = coherence_hat_unprimed, frequency_bands = frequency_bands)
-plot_heatmap(result_array = coherence_hat_primed, frequency_bands = frequency_bands)
+# plot the difference of the average coherence between the channels for the different frequency bands between unprimed and primed trials as heatmaps
+plot_diff_heatmap <- function(result_array_unprimed, results_array_primed, frequency_bands) {
+  
+  # preparation of the data
+  coherence_df <- as.data.frame(as.table(results_array_primed - result_array_unprimed))
+  colnames(coherence_df) <- c("channel1", "channel2", "frequency_band", "Delta_Coherence")
+  coherence_df$channel1 <- as.numeric(as.factor(coherence_df$channel1))
+  coherence_df$channel2 <- as.numeric(as.factor(coherence_df$channel2))
+  coherence_df$frequency_band <- factor(coherence_df$frequency_band)
+  
+  plot_names <- rep(NA, length(frequency_bands))
+  for (i in 1:length(frequency_bands)) {
+    plot_names[i] <- paste0(names(frequency_bands[i]), " (", frequency_bands[[i]][1], " - ", frequency_bands[[i]][2], " Hz)")
+  }
+  levels(coherence_df$frequency_band) <- plot_names
+  
+  # heatmap plot
+  ggplot(coherence_df, aes(x = channel1, y = channel2, fill = Delta_Coherence)) +
+    geom_tile() +
+    scale_fill_gradient(low = "white", high = "blue") + 
+    facet_wrap(~ frequency_band, scales = "free") +  
+    labs(title = paste("Difference of the Average Coherence Between the Different Channels in Unprimed and Primed Conditions"), x = "", y = "", fill = "Delta Coherence") +
+    theme_minimal() +
+    theme(axis.text.x = element_blank(), axis.text.y = element_blank(), axis.ticks = element_blank())
+}
+
+plot_heatmap(result_array = avg_coherence_test, frequency_bands = frequency_bands, un_primed = "")
+plot_heatmap(result_array = coherence_hat_unprimed, frequency_bands = frequency_bands, un_primed = "Unprimed")
+plot_heatmap(result_array = coherence_hat_primed, frequency_bands = frequency_bands, un_primed = "Primed")

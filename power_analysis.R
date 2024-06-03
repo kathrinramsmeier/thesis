@@ -12,7 +12,7 @@ trial <- 333
 sample_LFP <- LFP_stationary[[trial]][[channel]]
 
 # Hanning windowing
-LFP_hanning_windowed <- sample_LFP * gsignal::hanning(n = length(sample_LFP), method = "periodic")
+# LFP_hanning_windowed <- sample_LFP * gsignal::hanning(n = length(sample_LFP), method = "periodic")
 
 par(mfrow = c(2, 1))
 plot(sample_LFP, type = "l", xlab = "Time", ylab = "", main = "LFP of one Sample Trial")
@@ -20,10 +20,10 @@ plot(LFP_hanning_windowed, type = "l", xlab = "Time", ylab = "", main = "Hanning
 par(mfrow = c(1, 1))
 
 # Fourier transform to get power
-LFP_fftransformed <- fft(LFP_hanning_windowed) # frequencies ranging from 0 Hz to the sampling rate
+LFP_fftransformed <- fft(sample_LFP) # frequencies ranging from 0 Hz to the sampling rate
 
 # spacing between adjacent frequency bins in the resulting power spectrum (ratio of the sampling rate to the length of the data or the filter window used in the Fourier transform operation)
-freq_resolution <- sampling_rate / length(LFP_hanning_windowed)
+freq_resolution <- sampling_rate / length(sample_LFP)
 
 # frequency bins (frequencies at which the power spectrum will be computed)
 # these frequencies are evenly spaced across the frequency range from 0 Hz to the Nyquist frequency and they represent the bins in which the power spectrum is organised
@@ -46,7 +46,7 @@ for (i in 1:length(frequency_bands)){
   ind <- which(freq_bins >= frequency_bands[[i]][1] & freq_bins < frequency_bands[[i]][2])
   bands_power[i] <- sum(power[ind])
 }
-bands_power # maybe more observations are needed such that freq_resolution is bigger 
+round(bands_power) # maybe more observations are needed such that freq_resolution is bigger 
 
 
 
@@ -89,7 +89,7 @@ calculate_freqband_trial_power(
   LFP_trial = sample_LFP,
   frequency_bands = frequency_bands, 
   sampling_rate = sampling_rate,
-  hanning_windowing = TRUE
+  hanning_windowing = FALSE
 )
 
 
@@ -297,7 +297,6 @@ calculate_mean_bands_power <- function(LFP, un_primed_ind, hanning_windowing, fr
       electrode_channel = i
     )
     rel_bands_power_un_primed[i, ] <- apply(rel_bands_power_un_primed_ch, 2, mean)
-    print(paste("Channel", i, "of", num_channels, "completed."))
   }
   
   return(rel_bands_power_un_primed)
@@ -334,7 +333,7 @@ plot_power_heatmaps <- function(mean_bands_power_unprimed, mean_bands_power_prim
     
     plot <- pheatmap::pheatmap(
       mean_bands_power_unprimed,
-      main = paste0("Relative LFP Power Heatmap in Unprimed Conditions (Session ", session, ")"),
+      main = paste0("Relative LFP Power Heatmap in Unprimed Conditions"),
       cluster_rows = FALSE,  
       cluster_cols = FALSE,  
       row_order = row_order,
@@ -349,7 +348,7 @@ plot_power_heatmaps <- function(mean_bands_power_unprimed, mean_bands_power_prim
     
     plot <- pheatmap::pheatmap(
       mean_bands_power_primed,
-      main = paste0("Relative LFP Power Heatmap in Primed Conditions (Session ", session, ")"),
+      main = paste0("Relative LFP Power Heatmap in Primed Conditions"),
       cluster_rows = FALSE,  
       cluster_cols = FALSE,  
       row_order = row_order,
@@ -376,7 +375,7 @@ plot_power_heatmaps(
 )
 
 # plot power in each channel for primed and unprimed trials for each frequency band
-plot_power <- function(mean_bands_power_unprimed, mean_bands_power_primed) {
+plot_power <- function(mean_bands_power_unprimed, mean_bands_power_primed, frequency_bands) {
   
   min_val <- min(min(mean_bands_power_unprimed), min(mean_bands_power_primed))
   max_val <- max(max(mean_bands_power_unprimed), max(mean_bands_power_primed))
@@ -385,13 +384,19 @@ plot_power <- function(mean_bands_power_unprimed, mean_bands_power_primed) {
   
   plots <- list()
   
+  plot_names <- rep(NA, length(frequency_bands))
+  for (i in 1:length(frequency_bands)) {
+    plot_names[i] <- paste0(names(frequency_bands[i]), " (", frequency_bands[[i]][1], " - ", frequency_bands[[i]][2], " Hz)")
+  }
+  
   for (i in 1:length(frequency_bands)) {
     plots[[i]] <- ggplot(aes(x = !!as.name(names(frequency_bands)[i]), y = 1:15), data = as.data.frame(mean_bands_power_primed)) +
       geom_point(size = 3, colour = "blue") +
       geom_point(aes(x = !!as.name(names(frequency_bands)[i]), y = 1:15), data = as.data.frame(mean_bands_power_unprimed), size = 3, colour = "lightblue") +
       scale_y_continuous(breaks = seq(1, 15, 1)) +
+      scale_y_reverse(breaks = seq(1, 15, 1)) +
       xlim(min_val, max_val) +
-      labs(x = "Power", y = "") +
+      labs(x = "", y = "", title = plot_names[i]) +
       theme_minimal() +
       theme(axis.text.x = element_blank()) 
   }
@@ -403,70 +408,79 @@ plot_power <- function(mean_bands_power_unprimed, mean_bands_power_primed) {
 
 plot_power(
   mean_bands_power_unprimed = mean_bands_power_unprimed, 
-  mean_bands_power_primed = mean_bands_power_primed
+  mean_bands_power_primed = mean_bands_power_primed,
+  frequency_bands = frequency_bands
 ) # primed is dark blue, unprimed light blue
 
 
 
 # Power of LFP for Bands, Channels and Priming Status (Approach 2) --------
 
-calculate_freqband_power <- function(LFP, electrode_channel, un_primed_ind, frequency_bands = frequency_bands) {
-  
-  # filter either primed or unprimed trials and the electrode channel
-  LFP_trials <- LFP[electrode_channel, , un_primed_ind]
-  
-  # prepare matrix for results
-  bands_power <- matrix(nrow = ncol(LFP_trials), ncol = length(frequency_bands))
-  colnames(bands_power) <- names(frequency_bands)
-  rownames(bands_power) <- paste0("trial_", 1:ncol(LFP_trials))
-  
-  # iterate over all trials
-  for(i in 1:ncol(LFP_trials)) {
-    # calculate bands power for trial i and fixed channel
-    bands_power[i, ] <- calculate_freqband_trial_power(
-      LFP_trial = LFP_trials[, i],
-      frequency_bands = frequency_bands, 
-      sampling_rate = sampling_rate, 
-      filter_order = 2
-    ) 
-  }
-  
-  return(bands_power) 
-  
-}
+# calculate_freqband_power <- function(LFP, electrode_channel, un_primed_ind, frequency_bands = frequency_bands) {
+# 
+#   # filter either primed or unprimed trials 
+#   LFP_trials <- LFP[un_primed_ind]
+#   
+#   # filter the electrode channel
+#   LFP_trials <-  lapply(LFP_trials, function(x) x[[electrode_channel]]) # trial, time
+# 
+#   num_trials <- length(LFP_trials)
+# 
+#   # prepare matrix for results
+#   bands_power <- matrix(nrow = num_trials, ncol = length(frequency_bands))
+#   colnames(bands_power) <- names(frequency_bands)
+#   rownames(bands_power) <- paste0("trial_", 1:num_trials)
+# 
+#   # iterate over all trials
+#   for(i in 1:num_trials) {
+#     # calculate bands power for trial i and fixed channel
+#     bands_power[i, ] <- calculate_freqband_trial_power(
+#       LFP_trial = LFP_trials[[i]],
+#       frequency_bands = frequency_bands,
+#       sampling_rate = sampling_rate,
+#       filter_order = 2
+#     )
+#   }
+# 
+#   return(bands_power)
+# 
+# }
+# 
+# # testing on channel 6, unprimed trials
+# rel_bands_power_unprimed_ch6 <- calculate_freqband_power(
+#   LFP = LFP_stationary,
+#   frequency_bands = frequency_bands,
+#   un_primed_ind = unprimed_ind,
+#   electrode_channel = channel
+# )
+# head(rel_bands_power_unprimed_ch6)
+# apply(rel_bands_power_unprimed_ch6, 2, mean)
 
-# testing on channel 6, unprimed trials
-rel_bands_power_unprimed_ch6 <- calculate_freqband_power(
-  LFP = LFP_stationary,
-  frequency_bands = frequency_bands,
-  un_primed_ind = unprimed_ind,
-  electrode_channel = channel
-)
-head(rel_bands_power_unprimed_ch6)
-apply(rel_bands_power_unprimed_ch6, 2, mean)
-
-# mean bands power in every channel
-calculate_mean_freqbands_power <- function(LFP, un_primed_ind, frequency_bands) {
-  
-  # prepare matrix to store the results
-  rel_bands_power_un_primed <- matrix(nrow = dim(LFP)[1], ncol = length(frequency_bands))
-  colnames(rel_bands_power_un_primed) <- names(frequency_bands)
-  rownames(rel_bands_power_un_primed) <- 1:dim(LFP)[1]
-  
-  # take the mean over all trials and loop over all channels (mean bands power in every channel)
-  for(i in 1:dim(LFP)[1]){
-    rel_bands_power_un_primed_ch <- calculate_freqband_power(
-      LFP = LFP,
-      frequency_bands = frequency_bands, 
-      un_primed_ind = un_primed_ind,
-      electrode_channel = i
-    )
-    rel_bands_power_un_primed[i, ] <- apply(rel_bands_power_un_primed_ch, 2, mean)
-  }
-  
-  return(rel_bands_power_un_primed)
-  
-}
+# # mean bands power in every channel
+# calculate_mean_freqbands_power <- function(LFP, un_primed_ind, frequency_bands) {
+#   
+#   num_trials <- length(LFP)
+#   num_channels <- unique(lengths(LFP))
+#   
+#   # prepare matrix to store the results
+#   rel_bands_power_un_primed <- matrix(nrow = num_channels, ncol = length(frequency_bands))
+#   colnames(rel_bands_power_un_primed) <- names(frequency_bands)
+#   rownames(rel_bands_power_un_primed) <- 1:num_channels
+#   
+#   # take the mean over all trials and loop over all channels (mean bands power in every channel)
+#   for(i in 1:num_channels){
+#     rel_bands_power_un_primed_ch <- calculate_freqband_power(
+#       LFP = LFP,
+#       frequency_bands = frequency_bands, 
+#       un_primed_ind = un_primed_ind,
+#       electrode_channel = i
+#     )
+#     rel_bands_power_un_primed[i, ] <- apply(rel_bands_power_un_primed_ch, 2, mean)
+#   }
+#   
+#   return(rel_bands_power_un_primed)
+#   
+# }
 
 # mean band power in every channel for unprimed trials
 mean_bands_power_unprimed <- calculate_mean_freqbands_power(

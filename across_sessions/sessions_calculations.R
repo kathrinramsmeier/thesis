@@ -5,16 +5,29 @@ rm(list = c(
   "LFP_stationary", "LFP_stationary_hra"
 ))
 
-# session <- "C190127"
+session <- "C190127"
 
 sessions <- c(
-  "C190127" #, "c190128", 
+  # "C190127"#, 
+  # "C190128", 
   # # "C190201",
-  # "C190203", "C190204", "C190206", "C190207",
+  # "C190203", "C190204", 
+  # "C190206", 
+  "C190207",
   # # "C190208",
-  # "C190213", "C190218", "C190219", "C190220", "C190222", "C190223", 
-  # "C190225", "C190307", "C190313", "C190320", "C190322", "C190327", "C190416", 
-  # "H190608", "H190612", "H190620", "H190621", "H190625", "H190626", "H190627", "H190629"
+  "C190213", "C190218", "C190219", "C190220", "C190222", "C190223",
+  "C190225", "C190307", "C190313", "C190320", "C190322", "C190327", "C190416",
+  "H190608", "H190612", "H190620", "H190621", "H190625", "H190626", "H190627", "H190629"
+)
+
+# frequency bands
+# https://ncbi.nlm.nih.gov/pmc/articles/PMC3122299/#:~:text=Neural%20oscillations%20are%20electrical%20activities,gamma%20(%3E80%20Hz).
+frequency_bands <- list(
+  delta = c(0, 4),
+  theta = c(4, 8),
+  alpha = c(8, 12),
+  beta = c(12, 30),
+  gamma = c(30, 200)
 )
 
 
@@ -43,17 +56,6 @@ upper_channels <- probe$contact[probe$layer_category == "upper"]
 middle_channels <- probe$contact[probe$layer_category == "middle"]
 middle_channels[c(1, 3)] <- c(6, 8)
 deep_channels <- probe$contact[probe$layer_category == "deep"]
-
-# frequency bands
-# https://ncbi.nlm.nih.gov/pmc/articles/PMC3122299/#:~:text=Neural%20oscillations%20are%20electrical%20activities,gamma%20(%3E80%20Hz).
-frequency_bands <- list(
-  delta = c(0, 4),
-  theta = c(4, 8),
-  alpha = c(8, 12),
-  beta = c(12, 30),
-  low_gamma = c(30, 80),
-  high_gamma = c(80, 200)
-)
 
 
 
@@ -150,63 +152,50 @@ saveRDS(un_primed_indices, paste0(session, "_un_primed_indices.Rds"))
 
 # Power Analysis ----------------------------------------------------------
 
-# mean band power in every channel for unprimed trials
-mean_bands_power_hanning_windowed_unprimed <- calculate_mean_bands_power(
-  LFP = LFP_stationary, 
-  un_primed_ind = unprimed_ind,
-  hanning_windowing = TRUE,
-  frequency_bands = frequency_bands
-)
-mean_bands_power_unprimed <- calculate_mean_bands_power(
-  LFP = LFP_stationary, 
-  un_primed_ind = unprimed_ind,
-  hanning_windowing = FALSE,
-  frequency_bands = frequency_bands
-)
-
-# mean band power in every channel for primed trials
-mean_bands_power_hanning_windowed_primed <- calculate_mean_bands_power(
-  LFP = LFP_stationary, 
-  un_primed_ind = primed_ind,
-  hanning_windowing = TRUE,
-  frequency_bands = frequency_bands
-)
-mean_bands_power_primed <- calculate_mean_bands_power(
-  LFP = LFP_stationary, 
-  un_primed_ind = primed_ind,
-  hanning_windowing = FALSE,
-  frequency_bands = frequency_bands
-)
-
-# check
-plot_power_heatmaps(
-  mean_bands_power_unprimed = mean_bands_power_hanning_windowed_unprimed, 
-  mean_bands_power_primed = mean_bands_power_hanning_windowed_primed, 
-  un_primed = "unprimed"
-)
-plot_power_heatmaps(
-  mean_bands_power_unprimed = mean_bands_power_hanning_windowed_unprimed, 
-  mean_bands_power_primed = mean_bands_power_hanning_windowed_primed, 
-  un_primed = "primed"
-)
-plot_power_heatmaps(
-  mean_bands_power_unprimed = mean_bands_power_unprimed, 
-  mean_bands_power_primed = mean_bands_power_primed, 
-  un_primed = "unprimed"
-)
-plot_power_heatmaps(
-  mean_bands_power_unprimed = mean_bands_power_unprimed, 
-  mean_bands_power_primed = mean_bands_power_primed, 
-  un_primed = "primed"
-)
-
-# save power analysis results
-setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/power/unprimed")
-saveRDS(mean_bands_power_hanning_windowed_unprimed, paste0(session, "_mean_bands_power_hanning_windowed_unprimed.Rds"))
-saveRDS(mean_bands_power_unprimed, paste0(session, "_mean_bands_power_unprimed.Rds"))
-setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/power/primed")
-saveRDS(mean_bands_power_hanning_windowed_primed, paste0(session, "_mean_bands_power_hanning_windowed_primed.Rds"))
-saveRDS(mean_bands_power_primed, paste0(session, "_mean_bands_power_primed.Rds"))
+for (i in 1:length(sessions)) {
+  
+  session <- sessions[i]
+  
+  # load stationary LFPs
+  setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/stationarity")
+  LFP_stationary <- readRDS(paste0(session, "_LFP_stationary.Rds"))
+  
+  # load (un)primed indices
+  setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/stationarity")
+  un_primed_indices <- readRDS(paste0(session, "_un_primed_indices.Rds"))
+  unprimed_ind <- un_primed_indices$unprimed_ind
+  primed_ind <- un_primed_indices$primed_ind
+  
+  sampling_rate <- 1017.253
+  
+  # Nyquist frequency: maximum frequency that can be represented in the digital signal
+  nyquist_freq <- sampling_rate / 2
+  
+  # mean band power in every channel for unprimed trials
+  mean_bands_power_unprimed <- calculate_mean_bands_power(
+    LFP = LFP_stationary, 
+    un_primed_ind = unprimed_ind,
+    hanning_windowing = FALSE,
+    frequency_bands = frequency_bands
+  )
+  
+  # mean band power in every channel for primed trials
+  mean_bands_power_primed <- calculate_mean_bands_power(
+    LFP = LFP_stationary, 
+    un_primed_ind = primed_ind,
+    hanning_windowing = FALSE,
+    frequency_bands = frequency_bands
+  )
+  
+  # save power analysis results
+  setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/power/unprimed")
+  saveRDS(mean_bands_power_unprimed, paste0(session, "_mean_bands_power_unprimed.Rds"))
+  setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/power/primed")
+  saveRDS(mean_bands_power_primed, paste0(session, "_mean_bands_power_primed.Rds"))
+  
+  print(paste("Session", i, "of", length(sessions), "completed."))
+  
+}
 
 
 
@@ -232,7 +221,7 @@ for (i in 1:length(sessions)) {
   coherence_hat_unprimed <- calculate_avg_coherence(
     LFP = LFP_stationary,
     un_primed_ind = unprimed_ind,
-    frequency_bands = frequency_bands[2:5],
+    frequency_bands = frequency_bands,
     sampling_rate = sampling_rate, 
     filter_order = 2
   )
@@ -244,13 +233,15 @@ for (i in 1:length(sessions)) {
   coherence_hat_primed <- calculate_avg_coherence(
     LFP = LFP_stationary,
     un_primed_ind = primed_ind,
-    frequency_bands = frequency_bands[2:5],
+    frequency_bands = frequency_bands,
     sampling_rate = sampling_rate, 
     filter_order = 2
   )
   
   setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/coherence/primed")
   saveRDS(coherence_hat_primed, paste0(session, "_avg_coherence_primed.Rds"))
+  
+  print(paste("Session", i, "of", length(sessions), "Sessions completed."))
   
 }
 
@@ -295,7 +286,7 @@ PLI_unprimed <- calculate_PLV_PLI_PPC_hat(
 )
 
 setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/PLI/unprimed")
-saveRDS(PLI_unprimed, paste0(session, "_PLI_unprimed_unprimed.Rds"))
+saveRDS(PLI_unprimed, paste0(session, "_PLI_unprimed.Rds"))
 
 # calculate PLI between the channels for all frequency bands for primed trials
 PLI_primed <- calculate_PLV_PLI_PPC_hat(
@@ -308,7 +299,7 @@ PLI_primed <- calculate_PLV_PLI_PPC_hat(
 )
 
 setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/PLI/primed")
-saveRDS(PLI_primed, paste0(session, "_PLI_unprimed_primed.Rds"))
+saveRDS(PLI_primed, paste0(session, "_PLI_primed.Rds"))
 
 # calculate PPC between the channels for all frequency bands for unprimed trials
 PPC_unprimed <- calculate_PLV_PLI_PPC_hat(
@@ -340,25 +331,45 @@ saveRDS(PPC_primed, paste0(session, "_PPC_unprimed_primed.Rds"))
 
 # Granger Causality -------------------------------------------------------
 
+# load stationary LFPs
+setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/stationarity")
+LFP_stationary_hra <- readRDS(paste0(session, "_LFP_stationary_hra.Rds"))
+
+# load (un)primed indices
+setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/stationarity")
+un_primed_indices <- readRDS(paste0(session, "_un_primed_indices.Rds"))
+unprimed_ind_hra <- un_primed_indices$unprimed_ind_hra
+primed_ind_hra <- un_primed_indices$primed_ind_hra
+
 GC_p_values_unprimed <- calculate_GC_p_values(
   LFP = LFP_stationary_hra,
   un_primed_ind = unprimed_ind_hra,
-  lag_order = 1
+  lag_order = 4
 )
 
-# check
-any(is.na(GC_p_values_unprimed))
+# checks
+any(is.na(GC_p_values_unprimed$p_values))
+mean(GC_p_values_unprimed$adj_sum_square_err < 0.3)
+mean(GC_p_values_unprimed$consistency < 0.8)
+GC_p_values_unprimed$portmanteu_test_res
+GC_p_values_unprimed$portmanteu_test_res
+plot_residuals(GC_p_values_unprimed$res[[38]])
 
 GC_percentage_sign_layer_levels_unprimed <- transform_layer_levels(GC_p_values = GC_p_values_unprimed)
 
 GC_p_values_primed <- calculate_GC_p_values(
   LFP = LFP_stationary_hra,
   un_primed_ind = primed_ind_hra,
-  lag_order = 5
+  lag_order = 4
 )
 
-# check
-any(is.na(GC_p_values_primed))
+# checks
+any(is.na(GC_p_values_primed$p_values))
+mean(GC_p_values_primed$adj_sum_square_err < 0.3)
+mean(GC_p_values_primed$consistency < 0.8)
+GC_p_values_primed$portmanteu_test_res
+GC_p_values_primed$portmanteu_test_res
+plot_residuals(GC_p_values_primed$res[[30]])
 
 GC_percentage_sign_layer_levels_primed <- transform_layer_levels(GC_p_values = GC_p_values_primed)
 
@@ -370,4 +381,5 @@ setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/granger_causality/pri
 saveRDS(GC_p_values_primed, paste0(session, "_GC_p_values_primed.Rds"))
 saveRDS(GC_percentage_sign_layer_levels_primed, paste0(session, "_GC_percentage_sign_layer_levels_primed.Rds"))
 
-
+plot_layer_influences(GC_percentage_sign_layer_levels_unprimed, "Unprimed")
+plot_layer_influences(GC_percentage_sign_layer_levels_primed, "Primed")

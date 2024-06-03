@@ -551,7 +551,6 @@ calculate_mean_bands_power <- function(LFP, un_primed_ind, hanning_windowing, fr
       electrode_channel = i
     )
     rel_bands_power_un_primed[i, ] <- apply(rel_bands_power_un_primed_ch, 2, mean)
-    print(paste("Channek", i, "of", num_channels, "completed."))
   }
   
   return(rel_bands_power_un_primed)
@@ -572,7 +571,7 @@ plot_power_heatmaps <- function(mean_bands_power_unprimed, mean_bands_power_prim
     
     plot <- pheatmap::pheatmap(
       mean_bands_power_unprimed,
-      main = paste0("Relative LFP Power Heatmap in Unprimed Conditions (Session ", session, ")"),
+      main = paste0("Relative LFP Power Heatmap in Unprimed Conditions"),
       cluster_rows = FALSE,  
       cluster_cols = FALSE,  
       row_order = row_order,
@@ -587,7 +586,7 @@ plot_power_heatmaps <- function(mean_bands_power_unprimed, mean_bands_power_prim
     
     plot <- pheatmap::pheatmap(
       mean_bands_power_primed,
-      main = paste0("Relative LFP Power Heatmap in Primed Conditions (Session ", session, ")"),
+      main = paste0("Relative LFP Power Heatmap in Primed Conditions"),
       cluster_rows = FALSE,  
       cluster_cols = FALSE,  
       row_order = row_order,
@@ -602,7 +601,7 @@ plot_power_heatmaps <- function(mean_bands_power_unprimed, mean_bands_power_prim
 }
 
 # plot power in each channel for primed and unprimed trials for each frequency band
-plot_power <- function(mean_bands_power_unprimed, mean_bands_power_primed) {
+plot_power <- function(mean_bands_power_unprimed, mean_bands_power_primed, frequency_bands) {
   
   min_val <- min(min(mean_bands_power_unprimed), min(mean_bands_power_primed))
   max_val <- max(max(mean_bands_power_unprimed), max(mean_bands_power_primed))
@@ -611,13 +610,19 @@ plot_power <- function(mean_bands_power_unprimed, mean_bands_power_primed) {
   
   plots <- list()
   
+  plot_names <- rep(NA, length(frequency_bands))
+  for (i in 1:length(frequency_bands)) {
+    plot_names[i] <- paste0(names(frequency_bands[i]), " (", frequency_bands[[i]][1], " - ", frequency_bands[[i]][2], " Hz)")
+  }
+  
   for (i in 1:length(frequency_bands)) {
     plots[[i]] <- ggplot(aes(x = !!as.name(names(frequency_bands)[i]), y = 1:15), data = as.data.frame(mean_bands_power_primed)) +
       geom_point(size = 3, colour = "blue") +
       geom_point(aes(x = !!as.name(names(frequency_bands)[i]), y = 1:15), data = as.data.frame(mean_bands_power_unprimed), size = 3, colour = "lightblue") +
       scale_y_continuous(breaks = seq(1, 15, 1)) +
+      scale_y_reverse(breaks = seq(1, 15, 1)) +
       xlim(min_val, max_val) +
-      labs(x = "Power", y = "") +
+      labs(x = "", y = "", title = plot_names[i]) +
       theme_minimal() +
       theme(axis.text.x = element_blank()) 
   }
@@ -640,7 +645,7 @@ freqband_filtering <- function(LFP_trial, frequency_bands, sampling_rate, filter
   nyquist_freq <- sampling_rate / 2
   
   # avoid numerical problem (only needed when all frequency bands are examined)
-  # frequency_bands[[1]][1] <- 0.01
+  frequency_bands[[1]][1] <- 0.01
   
   # loop over all frequency bands
   for (i in 1:length(frequency_bands)) {
@@ -743,8 +748,7 @@ calculate_avg_coherence <- function(LFP, un_primed_ind, frequency_bands, samplin
   
 }
 
-# plot the average coherence between the channels for the different frequency bands as heatmaps
-plot_heatmap <- function(result_array, frequency_bands) {
+plot_heatmap <- function(result_array, frequency_bands, un_primed) {
   
   # preparation of the data
   coherence_df <- as.data.frame(as.table(result_array))
@@ -752,16 +756,47 @@ plot_heatmap <- function(result_array, frequency_bands) {
   coherence_df$channel1 <- as.numeric(as.factor(coherence_df$channel1))
   coherence_df$channel2 <- as.numeric(as.factor(coherence_df$channel2))
   coherence_df$frequency_band <- factor(coherence_df$frequency_band)
-  levels(coherence_df$frequency_band) <- names(frequency_bands)
+
+  plot_names <- rep(NA, length(frequency_bands))
+  for (i in 1:length(frequency_bands)) {
+    plot_names[i] <- paste0(names(frequency_bands[i]), " (", frequency_bands[[i]][1], " - ", frequency_bands[[i]][2], " Hz)")
+  }
+  levels(coherence_df$frequency_band) <- plot_names
   
   # heatmap plot
   ggplot(coherence_df, aes(x = channel1, y = channel2, fill = Coherence)) +
     geom_tile() +
     scale_fill_gradient(low = "white", high = "blue") + 
-    facet_wrap( ~ frequency_band, scales = "free") +  
-    labs(title = "Avg Coherence Between the Different Channels as a Function of Frequency Bands", x = "", y = "", fill = "Coherence") +
-    theme_minimal()
+    facet_wrap(~ frequency_band, scales = "free") +  
+    labs(title = paste("Average Coherence Between the Different Channels in", un_primed, "Conditions"), x = "", y = "", fill = "Coherence") +
+    theme_minimal() +
+    theme(axis.text.x = element_blank(), axis.text.y = element_blank(), axis.ticks = element_blank())
+}
+
+# plot the difference of the average coherence between the channels for the different frequency bands between unprimed and primed trials as heatmaps
+plot_diff_heatmap <- function(result_array_unprimed, results_array_primed, frequency_bands) {
   
+  # preparation of the data
+  coherence_df <- as.data.frame(as.table(results_array_primed - result_array_unprimed))
+  colnames(coherence_df) <- c("channel1", "channel2", "frequency_band", "Delta_Coherence")
+  coherence_df$channel1 <- as.numeric(as.factor(coherence_df$channel1))
+  coherence_df$channel2 <- as.numeric(as.factor(coherence_df$channel2))
+  coherence_df$frequency_band <- factor(coherence_df$frequency_band)
+  
+  plot_names <- rep(NA, length(frequency_bands))
+  for (i in 1:length(frequency_bands)) {
+    plot_names[i] <- paste0(names(frequency_bands[i]), " (", frequency_bands[[i]][1], " - ", frequency_bands[[i]][2], " Hz)")
+  }
+  levels(coherence_df$frequency_band) <- plot_names
+  
+  # heatmap plot
+  ggplot(coherence_df, aes(x = channel1, y = channel2, fill = Delta_Coherence)) +
+    geom_tile() +
+    scale_fill_gradient(low = "white", high = "blue") + 
+    facet_wrap(~ frequency_band, scales = "free") +  
+    labs(title = paste("Difference of the Average Coherence Between the Different Channels in Unprimed and Primed Conditions"), x = "", y = "", fill = "Delta Coherence") +
+    theme_minimal() +
+    theme(axis.text.x = element_blank(), axis.text.y = element_blank(), axis.ticks = element_blank())
 }
 
 
@@ -774,11 +809,13 @@ calculate_PLV_PLI_PPC <- function(LFP_trial_1_freqband_filtered, LFP_trial_2_fre
   
   stopifnot(method %in% c("PLV", "PLI", "PPC"))
   
-  result <- rep(NA, dim(LFP_trial_1_freqband_filtered)[2])
+  num_freq_bands <- dim(LFP_trial_1_freqband_filtered)[2]
+  
+  result <- rep(NA, num_freq_bands)
   names(result) <- colnames(LFP_trial_1_freqband_filtered)
   
   # loop over all frequency bands
-  for (i in 1:dim(LFP_trial_1_freqband_filtered)[2]) {
+  for (i in 1:num_freq_bands) {
     
     # Hilbert transform to get the analytical signal
     LFP_1_freqband_ht <- gsignal::hilbert(LFP_trial_1_freqband_filtered[, i])
@@ -800,17 +837,13 @@ calculate_PLV_PLI_PPC <- function(LFP_trial_1_freqband_filtered, LFP_trial_2_fre
     } else if (method == "PPC") { # check this again!!!!!
       
       N <- length(phase_diffs)
-      sum_of_dot_products <- 0
-      
-      # compute pairwise dot products
-      for (j in 1:(N - 1)) {
-        for (k in (j + 1):N) {
-          dot_product <- cos(phase_diffs)[j] * cos(phase_diffs)[k] + sin(phase_diffs)[j] * sin(phase_diffs)[k]
-          sum_of_dot_products <- sum_of_dot_products + dot_product
+      ppc_sum <- 0
+      for (j in 1:(N-1)) {
+        for (k in (j+1):N) {
+          ppc_sum <- ppc_sum + (cos(phase_diffs[j]) * cos(phase_diffs[k]) + sin(phase_diffs[j]) * sin(phase_diffs[k]))
         }
       }
-      
-      result[i] <- (2 / (N * (N - 1))) * sum_of_dot_products
+      result[i] <- (2 / (N * (N - 1))) * ppc_sum
       
     }
   }
@@ -822,18 +855,20 @@ calculate_PLV_PLI_PPC <- function(LFP_trial_1_freqband_filtered, LFP_trial_2_fre
 # compute PLV/PLI/PPC between the channels in each frequency band for all primed and unprimed trials
 calculate_PLV_PLI_PPC_hat <- function(LFP, un_primed_ind, frequency_bands, sampling_rate, filter_order, method) {
   
-  num_channels <- unique(lengths(LFP))
-  num_trials <- length(LFP)
-  
   # filter either primed or unprimed trials
   LFP_trials <- LFP[un_primed_ind]
   
+  num_channels <- unique(lengths(LFP_trials))
+  num_trials <- length(LFP_trials)
+  num_freq_bands <- length(frequency_bands)
+  
   # prepare matrices to store results
-  results <- array(dim = c(num_channels, num_channels, length(frequency_bands)))
-  sum_results <- array(0 ,dim = c(num_channels, num_channels, length(frequency_bands)))
+  sum_results <- array(0 ,dim = c(num_channels, num_channels, num_freq_bands))
   
   # loop over all trials
   for (k in 1:num_trials) {
+    
+    results <- array(dim = c(num_channels, num_channels, num_freq_bands))
     
     # PLV/PLI/PPC for trial i between each channel
     for (i in 1:num_channels) {
@@ -858,14 +893,15 @@ calculate_PLV_PLI_PPC_hat <- function(LFP, un_primed_ind, frequency_bands, sampl
       }
     }
     
-    # calculate mean PLV/PLI/PPC over all trials 
-    # see https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3674231/#:~:text=PLV%20can%20therefore%20be%20viewed,each%20scaling%20of%20the%20wavelet.
     sum_results <- sum_results + results
-    avg_results <- sum_results / length(LFP_trials)
     
     print(paste("Trial", k, "of", num_trials, "completed."))
     
   }
+  
+  # calculate mean PLV/PLI/PPC over all trials 
+  # see https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3674231/#:~:text=PLV%20can%20therefore%20be%20viewed,each%20scaling%20of%20the%20wavelet.
+  avg_results <- sum_results / length(LFP_trials)
   
   return(avg_results)
   
@@ -1043,6 +1079,10 @@ calculate_GC_p_values <- function(LFP, un_primed_ind, lag_order) {
   
 }
 
+
+
+# Network Visualisation of GC Influences (Layer Levels) -------------------
+
 transform_layer_levels <- function(GC_p_values) {
   
   # prepare matrix with layer information and p values
@@ -1070,79 +1110,6 @@ transform_layer_levels <- function(GC_p_values) {
   }
   
   percentage_sign_layer_level <- cbind(percentage_sign, percentage_sign_layer_level)
-  
-  return(percentage_sign_layer_level)
-  
-}
-
-# plot the influences (unprimed, primed separate)
-plot_layer_influences <- function(percentage_sign, un_primed) {
-  
-  # assign colours to vertices based on influence
-  min_influence <- min(as.numeric(percentage_sign[, 3]))
-  max_influence <- max(as.numeric(percentage_sign[, 3]))
-  colour_range <- cm.colors(10)
-  influence_colours <- colour_range[cut(
-    as.numeric(percentage_sign[, 3]),
-    breaks = seq(min_influence, max_influence, length.out = length(colour_range) - 1),
-    include.lowest = TRUE
-  )]
-  
-  # plot the network with coloured nodes based on influence
-  plot(
-    graph_from_data_frame(percentage_sign[, 1:2], directed = TRUE),
-    layout = layout.circle,
-    vertex.label.cex = 1.5,
-    vertex.size = 30,
-    edge.arrow.size = 0.5,
-    edge.width = 3,
-    edge.color = influence_colours,
-    edge.curved = rep(0.1, nrow(percentage_sign)),
-    vertex.color = "white",
-    main = paste0(
-      "GC Relationships Between Cortical Layers for a Subset of ", un_primed, " Trials"
-    )
-  )
-  legend(
-    "bottomright",
-    legend = c("Smaller Influence", "Bigger Influence"),
-    col = c(colour_range[1], colour_range[length(colour_range)]),
-    lty = 1,
-    lwd = 2,
-    cex = 0.8
-  )
-  
-}
-
-
-
-# Network Visualisation of GC Influences (Layer Levels) -------------------
-
-transform_layer_levels <- function(GC_p_values) {
-  
-  # prepare matrix with layer information and p values
-  layer_influencing <- rep(NA, nrow(GC_p_values))
-  layer_influencing[GC_p_values[, 1] %in% upper_channels] <- "upper"
-  layer_influencing[GC_p_values[, 1] %in% middle_channels] <- "middle"
-  layer_influencing[GC_p_values[, 1] %in% deep_channels] <- "deep"
-  layer_influenced <- rep(NA, nrow(GC_p_values))
-  layer_influenced[GC_p_values[, 2] %in% upper_channels] <- "upper"
-  layer_influenced[GC_p_values[, 2] %in% middle_channels] <- "middle"
-  layer_influenced[GC_p_values[, 2] %in% deep_channels] <- "deep"
-  GC_p_values_layer_levels <- cbind(layer_influencing, layer_influenced, GC_p_values)
-  GC_p_values_layer_levels <- as.data.frame(GC_causality_p_values_layer_levels)
-  
-  # calculate the percentage of significant GC combis
-  percentage_sign <- cbind(
-    c("upper", "upper", "upper", "middle", "middle", "middle", "deep", "deep", "deep"),
-    c("upper", "middle", "deep", "upper", "middle", "deep", "upper", "middle", "deep")
-  )
-  percentage_sign_layer_level <- rep(NA, nrow(percentage_sign))
-  for (i in 1:nrow(percentage_sign)) {
-    ind <- GC_p_values_layer_levels[, 1] %in% percentage_sign[i, 1] & GC_p_values_layer_levels[, 2] %in% percentage_sign[i, 2]
-    p_values_layer_level <- GC_p_values_layer_levels[ind, ]$adj_p_values_F
-    percentage_sign_layer_level[i] <- sum(p_values_layer_level < 0.05) / length(p_values_layer_level)
-  }
   
   return(percentage_sign_layer_level)
   
