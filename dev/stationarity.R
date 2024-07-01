@@ -1,4 +1,12 @@
 
+session_data <- data_preprocessing(
+  session_data = session_data, 
+  same_lengths = TRUE,
+  ms_clipping = 10
+)
+list2env(session_data, envir = .GlobalEnv)
+rm(list = "session_data")
+
 # look at the 6th channel and 333 trial as an example first
 channel <- 6
 trial <- 333
@@ -24,9 +32,6 @@ adf_stationarity_test <- function(LFP, channel) {
         p_values[i, j] <- tseries::adf.test(LFP[[i]][[j]])$p.value
       }
     }
-    
-    # # ratio of LFPs that are stationary in each channel
-    # percentage_stationary <- colSums(p_values < 0.05) / num_trials
     
     # ratio of LFPs that are stationary
     percentage_stationary <- sum(p_values < 0.05) / (num_channels * num_trials)
@@ -92,11 +97,8 @@ adf_stationarity_test <- function(LFP, channel) {
 }
 
 # percentage of LFPs that are stationary
-adf_result_baseline <- adf_stationarity_test(LFP = LFP, channel = "all") # use for the case that LFP was cut equally
+adf_result_baseline <- adf_stationarity_test(LFP = LFP, channel = "all")
 adf_result_baseline # most are stationary - but can be better in some channels
-
-# Kwiatkowski-Phillips-Schmidt-Shin test - H0: stationary
-# kpss.test()
 
 # examining the autocorrelation function of some sample trials in a given channel
 # non-CS variables typically will have an autocorrelation that declines slowly with increasing lags and most CS variables will have a sharply declining autocorrelation function 
@@ -118,7 +120,7 @@ examine_autocorr <- function(LFP, channel) {
   }
 }
 examine_autocorr(LFP = LFP, channel = 1)
-examine_autocorr(LFP = LFP, channel = 6) # worse than in channel 1
+examine_autocorr(LFP = LFP, channel = 6)
 
 
 
@@ -130,10 +132,9 @@ par(mfrow = c(2, 1))
 plot(time[trial, ], LFP[channel, , trial], type = "l", xlab = "Time", ylab = "Amplitude", main = "Clipped LFP of one Sample Trial")
 plot(time[trial, ], LFP_detrended[, trial], type = "l", xlab = "Time", ylab = "Amplitude", main = "Detrended and Clipped LFP of one Sample Trial")
 par(mfrow = c(1, 1))
-# is this really good or does this maybe delete valuable information?
 
 # ADF test for stationarity
-adf_result_detrended <- adf_stationarity_test(LFP = LFP_detrended) 
+adf_result_detrended <- adf_stationarity_test(LFP = LFP_detrended, channel = "all") 
 adf_result_detrended - adf_result_baseline[channel] # no difference to baseline
 
 # examining the autocorrelation function of some sample trials
@@ -157,7 +158,7 @@ plot(time[trial, ], LFP_normalised[, trial], type = "l", xlab = "Time", ylab = "
 par(mfrow = c(1, 1))
 
 # ADF test for stationarity
-adf_result_normalised <- adf_stationarity_test(LFP_normalised) 
+adf_result_normalised <- adf_stationarity_test(LFP_normalised, channel = "all") 
 adf_result_normalised - adf_result_baseline[channel] # no difference to baseline
 
 # examining the autocorrelation function of some sample trials
@@ -180,37 +181,11 @@ plot(time[trial, ], LFP_ensemble_adjusted[, trial], type = "l", xlab = "Time", y
 par(mfrow = c(1, 1))
 
 # ADF test for stationarity
-adf_result_detrended <- adf_stationarity_test(LFP_ensemble_adjusted) 
+adf_result_detrended <- adf_stationarity_test(LFP_ensemble_adjusted, channel = "all") 
 adf_result_detrended - adf_result_baseline[channel] # only slightly better
 
 # examining the autocorrelation function of some sample trials
 examine_autocorr(LFP_ensemble_adjusted) # almost no difference to baseline
-
-
-
-# Dealing With Non-Stationarity - Differencing ----------------------------
-
-# differencing one time
-LFP_differenced <- diff(
-  x = LFP_ensemble_adjusted,
-  lag = 1,
-  # order of differencing - remove linear trends
-  differences = 1
-)
-
-par(mfrow = c(2, 1))
-plot(time[trial, ], LFP[channel, , trial], type = "l", xlab = "Time", ylab = "Amplitude", main = "Demeaned and Clipped LFP of one Sample Trial")
-plot(time[trial, ][1 : (length(time[trial, ]) - 1)], LFP_differenced[, trial], type = "l", xlab = "Time", ylab = "Amplitude", main = "Differenced Demeaned and Clipped LFP of one Sample Trial")
-par(mfrow = c(1, 1))
-
-# ADF test for stationarity
-adf_result_differenced <- adf_stationarity_test(LFP_differenced) 
-adf_result_differenced # all are now stationary (by definition)
-
-# examining the autocorrelation function of some sample trials
-examine_autocorr(LFP_differenced) # better
-
-# problem with differencing: change of interpretation - causal interactions are now among changes in the LFPs rather then in the LFPs per se (2) 
 
 
 
@@ -241,10 +216,9 @@ par(mfrow = c(2, 1))
 plot(time[trial, ], LFP[channel, , trial], type = "l", xlab = "Time", ylab = "Amplitude", main = "Demeaned and Clipped LFP of one Sample Trial")
 plot(time[trial, ], LFP_notch_filtered[, trial], type = "l", xlab = "Time", ylab = "Amplitude", main = "Notch-Filtered, Demeaned and Clipped LFP of one Sample Trial")
 par(mfrow = c(1, 1))
-# information may be lost
 
 # ADF test for stationarity
-adf_result_notch <- adf_stationarity_test(LFP_notch_filtered) 
+adf_result_notch <- adf_stationarity_test(LFP_notch_filtered, channel = "all") 
 adf_result_notch - adf_result_baseline[channel] # more LFPs are now stationary
 
 # examining the autocorrelation function of some sample trials
@@ -287,171 +261,9 @@ find_best_filter_order <- function(LFP){
 
 adf_result_notch <- find_best_filter_order(LFP = LFP_stationary)
 
-setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/notch_filter_order")
-saveRDS(adf_result_notch, paste0(session, "_notch_filter_order.Rds"))
-
-
-
-# other ideas: windowing, spectral factorisation, wavelet transformations, adaptive recursive least-squares modelling
-
 
 
 # Stationarity Transformation on the Whole LFP ----------------------------
-
-# transform_stationary <- function(
-#     LFP,
-#     detrending,
-#     normalising,
-#     ensemble_adjusting,
-#     notch_filtering,
-#     notch_filter_order,
-#     sampling_rate,
-#     print_remaining_non_stationary,
-#     hard_remove_all
-#     ) {
-#   
-#   # prepare matrix for the transformed LFPs
-#   LFP_stationary <- array(dim = c(dim(LFP)[2], dim(LFP)[3]))
-#   
-#   # loop over all channels
-#   for(i in 1:dim(LFP)[1]) {
-#     
-#     # extract the LFP from channel i
-#     LFP_channel_i <- LFP[i, , ]
-#     
-#     # removing linear trends
-#     if (detrending) {
-#       LFP_channel_i <- pracma::detrend(LFP_channel_i, tt = "linear")
-#     }
-#     
-#     # removal of temporal mean and division of temporal sd
-#     if (normalising) {
-#       LFP_channel_i <- LFP_channel_i - colMeans(LFP_channel_i)
-#       LFP_channel_i <- t(LFP_channel_i) / sd(t(LFP_channel_i))
-#       LFP_channel_i <- t(LFP_channel_i)
-#     }
-#     
-#     # ensemble mean removal and division of ensemble sd
-#     if (ensemble_adjusting) {
-#       LFP_channel_i <- LFP_channel_i - rowMeans(LFP_channel_i)
-#       LFP_channel_i <- LFP_channel_i / sd(LFP_channel_i)
-#     }
-#     
-#     # notch filtering each LFP trial
-#     if (notch_filtering) {
-#       
-#       # remove frequencies around 60 Hz (= electrical line noise)
-#       line_noise <- 60
-#       nyquist_freq <- sampling_rate / 2
-#       line_noise_norm <- line_noise / nyquist_freq
-#       
-#       notch_filter <- signal::fir1(
-#         # filter order - higher -> filters with sharper frequency responses, better attenuation, more computation; lower -> smoother frequency responses, may not achieve as much attenuation
-#         n = notch_filter_order[i], 
-#         # band edges
-#         w = line_noise_norm,
-#         # notch filter
-#         type = "stop"
-#       )
-#       
-#       # notch filtering each LFP trial
-#       LFP_channel_i_filtered <- array(dim = dim(LFP_channel_i))
-#       for(j in 1:ncol(LFP_channel_i_filtered)) {
-#         LFP_channel_i_filtered[, j] <- signal::filter(filt = notch_filter, x = LFP_channel_i[, j])
-#       }
-#       LFP_channel_i <- LFP_channel_i_filtered
-#       
-#     }
-#     
-#     if (print_remaining_non_stationary) {
-#       # display the number of remaining non-stationary LFPs
-#       p_values <- rep(NA, ncol(LFP_channel_i))
-#       for (j in 1:ncol(LFP_channel_i)) {
-#         p_values[j] <- tseries::adf.test(LFP_channel_i[, j])$p.value
-#       }
-#       print(paste0("Channel ", i, ": Number of LFP trials still non-stationary (before removing all): ", sum(p_values > 0.05)))
-#     }
-#     
-#     LFP_stationary <- abind::abind(LFP_stationary, LFP_channel_i, along = 3)
-#     
-#   }
-#   
-#   LFP_stationary <- LFP_stationary[, , 2:(dim(LFP)[1] + 1)]
-#   LFP_stationary <- aperm(LFP_stationary, c(3, 1, 2))
-#   
-#   # exclude the remaining few non-stationary trials
-#   if (hard_remove_all) {
-#     
-#     p_values <- matrix(NA, nrow = dim(LFP_stationary)[3], ncol = dim(LFP_stationary)[1])
-#     
-#     # loop over all channels
-#     for (j in 1:dim(LFP_stationary)[1]) {
-#       
-#       # loop over all trials
-#       for (i in 1:dim(LFP_stationary)[3]) {
-#         p_values[i, j] <- tseries::adf.test(LFP_stationary[j, , i])$p.value
-#       }
-#       
-#     }
-#     
-#     all_channels_stationary <- rep(NA, nrow(p_values))
-#     for (j in 1:nrow(p_values)) {
-#       
-#       # check if trials in all channels are stationary
-#       all_channels_stationary[j] <- all(p_values[j, ] < 0.05)
-#       stationary_ind <- which(all_channels_stationary)
-#       
-#     }
-#     
-#     # filter the stationary trials
-#     LFP_stationary <- LFP_stationary[, , stationary_ind]
-#     
-#   }
-#   
-#   return(LFP_stationary)
-#   
-# }
-# 
-# setwd("C:/Users/ramsm/Desktop/Master/Thesis/R/data_results/notch_filter_order")
-# notch_filter_order <- readRDS(paste0(session, "_notch_filter_order.Rds"))
-# 
-# LFP_stationary <- transform_stationary(
-#   LFP = LFP, 
-#   detrending = TRUE, 
-#   normalising = TRUE, 
-#   ensemble_adjusting = TRUE, # does this make sense when the trial times are not equal?
-#   notch_filtering = TRUE,
-#   notch_filter_order = notch_filter_order,
-#   sampling_rate = sampling_rate,
-#   print_remaining_non_stationary = FALSE,
-#   hard_remove_all = FALSE
-# )
-# 
-# LFP_stationary[1:3, 1:3, 1:3]
-# 
-# LFP_stationary_hra <- transform_stationary(
-#   LFP = LFP, 
-#   detrending = TRUE, 
-#   normalising = TRUE, 
-#   ensemble_adjusting = TRUE, 
-#   notch_filtering = TRUE,
-#   notch_filter_order = notch_filter_order,
-#   sampling_rate = sampling_rate,
-#   print_remaining_non_stationary = FALSE,
-#   hard_remove_all = TRUE
-# )
-# 
-# dim(LFP_stationary_hra)
-# 
-# # adapt unprimed and primed ind to removed trials
-# unprimed_ind_hra <- unprimed_ind[which(unprimed_ind %in% c(1:dim(LFP_stationary_hra)[3]))]
-# primed_ind_hra <- primed_ind[which(primed_ind %in% c(1:dim(LFP_stationary_hra)[3]))]
-# length(unprimed_ind_hra)
-# length(primed_ind_hra)
-
-
-
-# Stationarity Transformation on the Whole LFP (Unequally) ----------------
 
 transform_stationary <- function(
     LFP,
@@ -575,6 +387,15 @@ transform_stationary <- function(
   
 }
 
+session_data <- load_data(session = session)
+session_data <- data_preprocessing(
+  session_data = session_data, 
+  same_lengths = FALSE,
+  ms_clipping = 10
+)
+list2env(session_data, envir = .GlobalEnv)
+rm(list = "session_data")
+
 LFP_stationary <- transform_stationary(
   LFP = LFP, 
   detrending = TRUE, 
@@ -587,7 +408,7 @@ LFP_stationary <- transform_stationary(
 )
 
 adf_stationarity_test(LFP = LFP_stationary)
-adf_result_baseline
+adf_stationarity_test(LFP = LFP)
 
 # find the best filter order for each trial (first run transform_stationary() with notch_filtering = FALSE)
 find_best_filter_order <- function(LFP, max_filter_order, nyquist_freq){
@@ -676,7 +497,7 @@ LFP_stationary <- transform_stationary(
 adf_stationarity_test(LFP = LFP_stationary)
 adf_result_baseline
 
-# exclude the remaining few non-stationary trials
+# exclude the remaining few non-stationary trials (not applied in analysis)
 exclude_remaining_non_stationary <- function(LFP) {
   
   num_trials <- length(LFP)
@@ -720,3 +541,62 @@ unprimed_ind_hra <- unprimed_ind[which(unprimed_ind %in% c(1:dim(LFP_stationary_
 primed_ind_hra <- primed_ind[which(primed_ind %in% c(1:dim(LFP_stationary_hra)[3]))]
 length(unprimed_ind_hra)
 length(primed_ind_hra)
+
+
+
+# Dealing With Non-Stationarity - Differencing ----------------------------
+
+# problem with differencing: change of interpretation - causal interactions are now among changes in the LFPs rather then in the LFPs per se (2) 
+# (not applied in analysis)
+
+trial <- 15
+
+LFP_sample_trial <- LFP_stationary[[trial]]
+LFP_sample_trial <- do.call(cbind, lapply(LFP_sample_trial, function(x) as.numeric(x)))
+dim(LFP_sample_trial) # trial, channel
+
+# differencing one time
+LFP_differenced <- diff(x = LFP_sample_trial, differences = 1)
+
+par(mfrow = c(2, 1))
+plot(LFP_sample_trial[, 5], type = "l", xlab = "", ylab = "", main = "Demeaned and Notch Filtered LFP of one Sample Trial")
+plot(LFP_differenced[, 5], type = "l", xlab = "", ylab = "", main = "Demeaned, Notch Filtered and Differenced LFP of one Sample Trial")
+par(mfrow = c(1, 1))
+
+# ADF test for stationarity
+tseries::adf.test(LFP_sample_trial[, 12])$p.value # not stationary
+tseries::adf.test(LFP_differenced[, 12])$p.value # now stationary
+
+# examining the autocorrelation function
+examine_autocorr(LFP_sample_trial)
+examine_autocorr(LFP_differenced) # better
+
+# in a function for all trials
+differencing <- function(LFP, order) {
+  
+  num_trials <- length(LFP)
+  LFP_differenced <- vector("list", num_trials)
+  
+  for (i in 1:num_trials) {
+    
+    # difference each trial
+    LFP_trial_i <- LFP[[i]]
+    LFP_trial_i <- do.call(cbind, lapply(LFP_trial_i, function(x) as.numeric(x)))
+    LFP_trial_i_differenced_mat <- diff(x = LFP_trial_i, differences = order)
+    
+    # transform back into a list
+    col_lists <- apply(LFP_trial_i_differenced_mat, 2, function(x) as.list(x))
+    LFP_differenced_trial_i <- lapply(1:ncol(LFP_trial_i_differenced_mat), function(i) col_lists[[i]])
+    LFP_differenced[[i]] <- LFP_differenced_trial_i
+    
+  }
+  
+  return(LFP_differenced)
+  
+}
+
+LFP_differenced <- differencing(LFP = LFP_stationary, order = 1)
+
+# check stationarity
+adf_stationarity_test(LFP = LFP_stationary)
+adf_stationarity_test(LFP = LFP_differenced)

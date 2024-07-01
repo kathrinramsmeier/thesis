@@ -1,7 +1,7 @@
+
 library(tidyverse)  # data manipulation
-library(vars)       # VAR model
+library(vars)       # MVAR model
 library(bruceR)     # Granger causality
-library(multitaper) # Multitaper spectral analysis
 library(igraph)     # graphs for GC
 library(ggplot2)    # plots
 
@@ -86,7 +86,34 @@ summary(session_data$time) # before stimulus, 0 is stimulus, past-stimulus
 length(session_data$time) # 2 values less than LFP
 dim(session_data$behaviour)
 
-session_data$probe # layer 1:5 = upper, 6:10 = middle, 11:15 = deep
+session_data$probe # 1:5 = upper, 6:10 = middle, 11:15 = deep
+
+# LFP sample trial for all channels (for figure in thesis)
+sample_num <- sample(1:dim(session_data$LFP)[3], 1)
+sample_trial <- session_data$LFP[, , sample_num]
+sample_trial <- as.data.frame(sample_trial)
+sample_trial$ID <- 1:15
+sample_trial_long <- sample_trial %>%
+  pivot_longer(cols = -ID, names_to = "time", values_to = "value") %>%
+  mutate(time = as.numeric(gsub("V", "", time))) %>%
+  mutate(time_label = session_data$time[time])
+ggplot(sample_trial_long, aes(x = time_label, y = value, group = ID)) +
+  geom_line() +
+  facet_wrap(~ ID, ncol = 1, strip.position = "left") +
+  theme_minimal() +
+  theme(
+    strip.text.y = element_text(),
+    axis.text.x = element_text(size = 8),
+    axis.text.y = element_text(size = 8),
+    panel.spacing = unit(0.5, "lines"),
+    strip.background = element_blank(),
+    strip.placement = "outside",
+    axis.ticks.x = element_line(size = 0.5),
+    axis.ticks.length = unit(0.2, "cm"),
+    plot.margin = margin(5, 5, 5, 5),
+    strip.text = element_text(angle = 90, hjust = 1, vjust = 0.5)
+  ) +
+  labs(x = "time", y = "")
 
 
 
@@ -206,21 +233,17 @@ sampling_rate <- recordinginfo$data_sampling_rate_hz
 nyquist_freq <- sampling_rate / 2
 
 # frequency bands
-# https://ncbi.nlm.nih.gov/pmc/articles/PMC3122299/#:~:text=Neural%20oscillations%20are%20electrical%20activities,gamma%20(%3E80%20Hz).
 frequency_bands <- list(
-  delta = c(0, 4),
   theta = c(4, 8),
   alpha = c(8, 12),
   beta = c(12, 30),
-  low_gamma = c(30, 80),
-  high_gamma = c(80, 200)
+  gamma = c(30, 200)
 )
 
-# get channel information
-upper_channels <- probe$contact[probe$layer_category == "upper"]
-middle_channels <- probe$contact[probe$layer_category == "middle"]
-middle_channels[c(1, 3)] <- c(6, 8)
-deep_channels <- probe$contact[probe$layer_category == "deep"]
+# cortical channels -> cortical layers
+upper_channels <- 1:5
+middle_channels <- 6:10
+deep_channels <- 11:15
 
 
 
@@ -235,6 +258,7 @@ par(mfrow = c(1, 1))
 
 # LFP of a sample trial over time for all cortical channels over time in one plot
 colours <- RColorBrewer::brewer.pal(15, "Greens")
+trial <- 42
 plot(time[100, ], LFP[1, , 100], type = "l", col = colours[1], main = "LFP of a Sample Trial in Different Channels")
 for (i in 2:dim(LFP)[1]) {
   lines(time[100, ], LFP[i, , 100], col = colours[i])
@@ -248,9 +272,4 @@ lines(time[100, ], LFP[8, , 100], lwd = 2, col = colours[2])
 lines(time[100, ], LFP[15, , 100], lwd = 2, col = colours[3])
 legend("bottomright", legend = paste("Channel", c(1, 8, 15)), col = colours, lty = 1, cex = 0.8)
 
-# # stationary LFP of a sample trial over time for 3 cortical channels over time in one plot
-# colours = c("green", "blue", "violet")
-# plot(time[100, ], LFP_stationary[1, , 100], type = "l", lwd = 2, col = colours[1], main = "LFP of a Sample Trial in 3 Different Channels (Lower, Middle and Upper")
-# lines(time[100, ], LFP_stationary[8, , 100], lwd = 2, col = colours[2])
-# lines(time[100, ], LFP_stationary[15, , 100], lwd = 2, col = colours[3])
-# legend("bottomright", legend = paste("Channel", c(1, 8, 15)), col = colours, lty = 1, cex = 0.8)
+
